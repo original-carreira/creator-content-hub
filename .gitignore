@@ -1,0 +1,10 @@
+/build/
+/.gradle/
+/out/
+*.iml
+.idea/
+
+__pycache__/
+*.pyc
+venv/
+.env

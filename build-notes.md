@@ -1,0 +1,3 @@
+- Projeto iniciado sem código Kotlin
+- Estrutura criada antes da implementação
+- Legacy mantido como referência
