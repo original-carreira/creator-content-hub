@@ -1,16 +1,15 @@
 # Creator Content Hub
 
-## Overview
-...
+## Objetivo
+Plataforma de processamento de conteúdo baseada em transcrição e exportação.
 
-## Architecture
-...
+## Arquitetura
+Baseada em camadas, com separação clara de responsabilidades.
 
-## Migration Strategy
-...
+## Estratégia
+Migração incremental do sistema Python para Kotlin.
 
-## Tech Stack
-...
-
-## Repository Structure
-...
+## Estrutura
+- backend/
+- legacy-python/
+- docs/
