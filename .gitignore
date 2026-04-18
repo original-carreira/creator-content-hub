@@ -10,6 +10,7 @@ build/
 out/
 *.class
 *.jar
+*.log
 
 
 .idea/
