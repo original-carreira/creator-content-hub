@@ -13,3 +13,8 @@ Migração incremental do sistema Python para Kotlin.
 - backend/
 - legacy-python/
 - docs/
+
+
+# Creator Content Hub
+
+Plataforma de processamento de conteúdo com migração progressiva de Python para Kotlin.
