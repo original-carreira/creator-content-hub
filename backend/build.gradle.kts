@@ -1,9 +1,10 @@
 // 1. Padronização: Nomes de variáveis em camelCase (sem underscores)
 val ktorVersion = "2.3.12"
-val kotlinVersion = "2.0.0"
+val kotlinVersion = "1.9.24"
 
 plugins {
     kotlin("jvm") version "2.0.0"
+    kotlin("plugin.serialization") version "2.0.0"
     id("io.ktor.plugin") version "2.3.12"
     id("io.github.goooler.shadow") version "8.1.7"
 }
@@ -32,6 +33,7 @@ kotlin {
 }
 
 application {
-    mainClass.set("com.creatorhub.ApplicationKt")
+    mainClass.set("com.creatorcontenthub.ApplicationKt")
 }
+
 
