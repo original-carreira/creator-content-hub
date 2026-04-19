@@ -13,7 +13,13 @@ fun Application.configureStatusPages() {
     install(StatusPages) {
 
         exception<IllegalArgumentException> { call, cause ->
-            log.error("Validation error on ${call.request.path()}", cause)
+
+            val requestId = call.requestId()
+
+            log.error(
+                "[requestId=$requestId] Validation error on ${call.request.path()}",
+                cause
+            )
 
             call.respondError(
                 HttpStatusCode.BadRequest,
@@ -23,7 +29,13 @@ fun Application.configureStatusPages() {
         }
 
         exception<Throwable> { call, cause ->
-            log.error("Unhandled error on ${call.request.path()}", cause)
+
+            val requestId = call.requestId()
+
+            log.error(
+                "[requestId=$requestId] Unhandled error on ${call.request.path()}",
+                cause
+            )
 
             call.respondError(
                 HttpStatusCode.InternalServerError,

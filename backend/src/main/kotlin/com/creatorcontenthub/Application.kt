@@ -2,7 +2,9 @@ package com.creatorcontenthub
 
 import com.creatorcontenthub.controller.healthRoutes
 import com.creatorcontenthub.controller.textRoutes
+import com.creatorcontenthub.infrastructure.http.configureRequestId
 import com.creatorcontenthub.infrastructure.http.configureStatusPages
+import com.creatorcontenthub.infrastructure.http.requestId
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
@@ -25,9 +27,10 @@ fun main() {
 }
 
 fun Application.module() {
-    configureLogging()
+    configureRequestId()    // 1. gera o requestId no início do pipeline
+    configureLogging()      // 2. logs já conseguem ler o requestId
     configureSerialization()
-    configureStatusPages()
+    configureStatusPages()  // 3. erros já terão requestId
     configureRouting()
 }
 
@@ -42,6 +45,7 @@ fun Application.configureLogging() {
         }
 
         format { call ->
+            val requestId = call.requestId()
             val method = call.request.httpMethod.value // Agora com o import correto
             val path = call.request.path()
             val status = call.response.status()?.value?.toString() ?: "Unknown"
