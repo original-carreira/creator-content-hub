@@ -3,8 +3,8 @@ package com.creatorcontenthub.application.dto
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class ApiResponse(
+data class ApiResponse<T>( // 🔥 AGORA GENÉRICO
     val success: Boolean,
-    val data: ProcessTextResponse? = null,
+    val data: T? = null,
     val error: ApiError? = null
 )

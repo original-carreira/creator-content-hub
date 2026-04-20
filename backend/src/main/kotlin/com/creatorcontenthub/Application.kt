@@ -2,16 +2,19 @@ package com.creatorcontenthub
 
 import com.creatorcontenthub.controller.healthRoutes
 import com.creatorcontenthub.controller.textRoutes
+import com.creatorcontenthub.controller.exportRoutes // 🔥 NOVO
 import com.creatorcontenthub.infrastructure.http.configureMetrics
 import com.creatorcontenthub.infrastructure.http.configureRequestId
 import com.creatorcontenthub.infrastructure.http.configureStatusPages
 import com.creatorcontenthub.infrastructure.http.requestId
 import com.creatorcontenthub.infrastructure.http.duration
 import com.creatorcontenthub.application.usecase.ProcessTextUseCase
+import com.creatorcontenthub.application.usecase.ExportTextUseCase // 🔥 NOVO
 import com.creatorcontenthub.controller.metricsRoutes
 import com.creatorcontenthub.infrastructure.adapter.LocalTextProcessorAdapter
 import com.creatorcontenthub.infrastructure.adapter.PythonTextProcessorAdapter
 import com.creatorcontenthub.infrastructure.adapter.FallbackTextProcessorAdapter
+import com.creatorcontenthub.infrastructure.adapter.TxtExporterAdapter // 🔥 NOVO
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
@@ -21,8 +24,7 @@ import io.ktor.server.plugins.callloging.*
 import io.ktor.server.routing.*
 import kotlinx.serialization.json.Json
 import org.slf4j.event.Level
-import io.ktor.server.request.* // Este traz o .path() e o .httpMethod
-
+import io.ktor.server.request.*
 
 fun main() {
     embeddedServer(
@@ -39,7 +41,7 @@ fun Application.module() {
     configureSerialization()
     configureStatusPages()
 
-    // 🔥 COMPOSIÇÃO (PORTS & ADAPTERS)
+    // 🔥 COMPOSIÇÃO PROCESSAMENTO
 
     val usePython = environment.config
         .propertyOrNull("app.usePython")
@@ -67,8 +69,15 @@ fun Application.module() {
 
     val processTextUseCase = ProcessTextUseCase(adapter)
 
-    // ✅ ÚNICA chamada correta
-    configureRouting(processTextUseCase)
+    // 🔥 NOVO — COMPOSIÇÃO EXPORT
+    val txtExporter = TxtExporterAdapter()
+    val exportTextUseCase = ExportTextUseCase(txtExporter)
+
+    // 🔥 ROUTING ATUALIZADO
+    configureRouting(
+        processTextUseCase,
+        exportTextUseCase
+    )
 }
 
 // 🔧 LOGGING
@@ -76,7 +85,6 @@ fun Application.configureLogging() {
     install(CallLogging) {
         level = Level.INFO
 
-        // Só loga requisições de processamento para não sujar o log com /health
         filter { call ->
             call.request.path().startsWith("/process")
         }
@@ -93,14 +101,14 @@ fun Application.configureLogging() {
     }
 }
 
-// 🔧 SERIALIZAÇÃO (CRÍTICO)
+// 🔧 SERIALIZAÇÃO
 fun Application.configureSerialization() {
     install(ContentNegotiation) {
         json(
             Json {
                 ignoreUnknownKeys = true
                 prettyPrint = true
-                isLenient = true // Recomendado para robustez no port do Python
+                isLenient = true
             }
         )
     }
@@ -108,11 +116,13 @@ fun Application.configureSerialization() {
 
 // 🌐 ROUTING
 fun Application.configureRouting(
-    processTextUseCase: ProcessTextUseCase
+    processTextUseCase: ProcessTextUseCase,
+    exportTextUseCase: ExportTextUseCase // 🔥 NOVO
 ) {
     routing {
         healthRoutes()
         textRoutes(processTextUseCase)
+        exportRoutes(exportTextUseCase) // 🔥 NOVO
         metricsRoutes()
     }
 }

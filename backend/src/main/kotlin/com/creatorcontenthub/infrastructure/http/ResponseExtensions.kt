@@ -2,7 +2,6 @@ package com.creatorcontenthub.infrastructure.http
 
 import com.creatorcontenthub.application.dto.ApiError
 import com.creatorcontenthub.application.dto.ApiResponse
-import com.creatorcontenthub.application.dto.ProcessTextResponse
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.response.*
@@ -14,7 +13,8 @@ fun ApplicationCall.duration(): Long {
     return this.attributes.getOrNull(DurationKey) ?: 0L
 }
 
-suspend fun ApplicationCall.respondSuccess(data: ProcessTextResponse) {
+// 🔥 AGORA GENÉRICO (remove acoplamento com ProcessTextResponse)
+suspend fun <T> ApplicationCall.respondSuccess(data: T) {
     respond(
         HttpStatusCode.OK,
         ApiResponse(
@@ -24,6 +24,7 @@ suspend fun ApplicationCall.respondSuccess(data: ProcessTextResponse) {
     )
 }
 
+// 🔥 ESPECIFICA <Nothing> para evitar ambiguidade de tipo
 suspend fun ApplicationCall.respondError(
     status: HttpStatusCode,
     message: String,
@@ -31,7 +32,7 @@ suspend fun ApplicationCall.respondError(
 ) {
     respond(
         status,
-        ApiResponse(
+        ApiResponse<Nothing>(
             success = false,
             error = ApiError(
                 message = message,
