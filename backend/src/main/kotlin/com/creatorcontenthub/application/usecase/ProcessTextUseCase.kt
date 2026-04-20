@@ -1,11 +1,11 @@
 package com.creatorcontenthub.application.usecase
 
-import com.creatorcontenthub.domain.text.TextProcessor
+import com.creatorcontenthub.application.port.TextProcessingPort
 
 class ProcessTextUseCase(
-    private val textProcessor: TextProcessor = TextProcessor()
+    private val processor: TextProcessingPort
 ) {
     fun execute(text: String): String {
-        return textProcessor.process(text)
+        return processor.process(text)
     }
 }

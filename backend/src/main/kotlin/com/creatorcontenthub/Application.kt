@@ -2,9 +2,15 @@ package com.creatorcontenthub
 
 import com.creatorcontenthub.controller.healthRoutes
 import com.creatorcontenthub.controller.textRoutes
+import com.creatorcontenthub.infrastructure.http.configureMetrics
 import com.creatorcontenthub.infrastructure.http.configureRequestId
 import com.creatorcontenthub.infrastructure.http.configureStatusPages
 import com.creatorcontenthub.infrastructure.http.requestId
+import com.creatorcontenthub.infrastructure.http.duration
+import com.creatorcontenthub.application.usecase.ProcessTextUseCase
+import com.creatorcontenthub.infrastructure.adapter.LocalTextProcessorAdapter
+import com.creatorcontenthub.infrastructure.adapter.PythonTextProcessorAdapter
+import com.creatorcontenthub.infrastructure.adapter.FallbackTextProcessorAdapter
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
@@ -27,11 +33,42 @@ fun main() {
 }
 
 fun Application.module() {
-    configureRequestId()    // 1. gera o requestId no início do pipeline
-    configureLogging()      // 2. logs já conseguem ler o requestId
+    configureRequestId()
+    configureMetrics()
+    configureLogging()
     configureSerialization()
-    configureStatusPages()  // 3. erros já terão requestId
-    configureRouting()
+    configureStatusPages()
+
+    // 🔥 COMPOSIÇÃO (PORTS & ADAPTERS)
+
+    val usePython = environment.config
+        .propertyOrNull("app.usePython")
+        ?.getString()
+        ?.toBoolean() ?: false
+
+    val endpoint = environment.config
+        .propertyOrNull("app.python.endpoint")
+        ?.getString()
+        ?: "http://localhost:5000/process"
+
+    val localAdapter = LocalTextProcessorAdapter()
+
+    val adapter =
+        if (usePython) {
+            val pythonAdapter = PythonTextProcessorAdapter(endpoint)
+
+            FallbackTextProcessorAdapter(
+                primary = pythonAdapter,
+                fallback = localAdapter
+            )
+        } else {
+            localAdapter
+        }
+
+    val processTextUseCase = ProcessTextUseCase(adapter)
+
+    // ✅ ÚNICA chamada correta
+    configureRouting(processTextUseCase)
 }
 
 // 🔧 LOGGING
@@ -46,11 +83,12 @@ fun Application.configureLogging() {
 
         format { call ->
             val requestId = call.requestId()
-            val method = call.request.httpMethod.value // Agora com o import correto
+            val method = call.request.httpMethod.value
             val path = call.request.path()
             val status = call.response.status()?.value?.toString() ?: "Unknown"
+            val duration = call.duration()
 
-            "HTTP $method $path -> $status"
+            "[requestId=$requestId] HTTP $method $path -> $status (${duration}ms)"
         }
     }
 }
@@ -69,9 +107,11 @@ fun Application.configureSerialization() {
 }
 
 // 🌐 ROUTING
-fun Application.configureRouting() {
+fun Application.configureRouting(
+    processTextUseCase: ProcessTextUseCase
+) {
     routing {
         healthRoutes()
-        textRoutes()
+        textRoutes(processTextUseCase)
     }
 }

@@ -11,9 +11,9 @@ import io.ktor.server.request.receive
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.post
 
-fun Route.textRoutes() {
-
-    val useCase = ProcessTextUseCase()
+fun Route.textRoutes(
+    useCase: ProcessTextUseCase
+) {
 
     post("/process") {
 

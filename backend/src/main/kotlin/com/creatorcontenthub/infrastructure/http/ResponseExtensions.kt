@@ -6,6 +6,13 @@ import com.creatorcontenthub.application.dto.ProcessTextResponse
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.response.*
+import io.ktor.util.*
+
+val DurationKey = AttributeKey<Long>("Duration")
+
+fun ApplicationCall.duration(): Long {
+    return this.attributes.getOrNull(DurationKey) ?: 0L
+}
 
 suspend fun ApplicationCall.respondSuccess(data: ProcessTextResponse) {
     respond(
