@@ -6,37 +6,34 @@ import io.ktor.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
-// 🔥 IMPORTANTE: NÃO recriar DurationKey aqui
-// ele já vem do arquivo de extensions
-// import com.creatorcontenthub.infrastructure.http.DurationKey
-
 private val StartTimeKey = AttributeKey<Long>("StartTime")
 
-// contador global
+// 🔹 MÉTRICAS GLOBAIS
 private val totalRequests = AtomicLong(0)
-
-// contador por rota
 private val routeCounters = ConcurrentHashMap<String, AtomicLong>()
+
+// 🔹 NOVO: MÉTRICAS DO PYTHON (centralizadas)
+val pythonCalls = AtomicLong(0)
+val pythonErrors = AtomicLong(0)
+val pythonTimeouts = AtomicLong(0)
 
 fun Application.configureMetrics() {
 
-    // 🔹 INÍCIO da requisição
     intercept(ApplicationCallPipeline.Monitoring) {
 
         val startTime = System.currentTimeMillis()
         call.attributes.put(StartTimeKey, startTime)
 
-        // contador global
         totalRequests.incrementAndGet()
 
-        // contador por rota
-        val path = call.request.path()
+        // 🔹 NORMALIZA PATH (evita problemas futuros)
+        val path = call.request.path().substringBefore("?")
+
         routeCounters
             .computeIfAbsent(path) { AtomicLong(0) }
             .incrementAndGet()
     }
 
-    // 🔹 FINAL da requisição
     intercept(ApplicationCallPipeline.Fallback) {
 
         val startTime = call.attributes.getOrNull(StartTimeKey)
@@ -44,13 +41,19 @@ fun Application.configureMetrics() {
 
         val duration = System.currentTimeMillis() - startTime
 
-        // 🔥 usa a MESMA key do helper
         call.attributes.put(DurationKey, duration)
     }
 }
 
-// 🔹 EXPOSIÇÃO DE MÉTRICAS
+// 🔹 EXPOSIÇÃO
 fun getTotalRequests(): Long = totalRequests.get()
 
 fun getRouteMetrics(): Map<String, Long> =
     routeCounters.mapValues { it.value.get() }
+
+// 🔹 NOVO: EXPOSIÇÃO PYTHON
+fun getPythonMetrics(): Map<String, Long> = mapOf(
+    "calls" to pythonCalls.get(),
+    "errors" to pythonErrors.get(),
+    "timeouts" to pythonTimeouts.get()
+)
