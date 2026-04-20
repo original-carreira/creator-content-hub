@@ -52,8 +52,9 @@ fun getRouteMetrics(): Map<String, Long> =
     routeCounters.mapValues { it.value.get() }
 
 // 🔹 NOVO: EXPOSIÇÃO PYTHON
-fun getPythonMetrics(): Map<String, Long> = mapOf(
-    "calls" to pythonCalls.get(),
-    "errors" to pythonErrors.get(),
-    "timeouts" to pythonTimeouts.get()
-)
+fun getPythonMetrics(): PythonMetrics =
+    PythonMetrics(
+        calls = pythonCalls.get(),
+        errors = pythonErrors.get(),
+        timeouts = pythonTimeouts.get()
+    )

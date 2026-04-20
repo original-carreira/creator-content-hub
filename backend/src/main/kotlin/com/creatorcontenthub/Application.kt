@@ -8,6 +8,7 @@ import com.creatorcontenthub.infrastructure.http.configureStatusPages
 import com.creatorcontenthub.infrastructure.http.requestId
 import com.creatorcontenthub.infrastructure.http.duration
 import com.creatorcontenthub.application.usecase.ProcessTextUseCase
+import com.creatorcontenthub.controller.metricsRoutes
 import com.creatorcontenthub.infrastructure.adapter.LocalTextProcessorAdapter
 import com.creatorcontenthub.infrastructure.adapter.PythonTextProcessorAdapter
 import com.creatorcontenthub.infrastructure.adapter.FallbackTextProcessorAdapter
@@ -34,7 +35,6 @@ fun main() {
 
 fun Application.module() {
     configureRequestId()
-    configureMetrics()
     configureLogging()
     configureSerialization()
     configureStatusPages()
@@ -113,5 +113,6 @@ fun Application.configureRouting(
     routing {
         healthRoutes()
         textRoutes(processTextUseCase)
+        metricsRoutes()
     }
 }
