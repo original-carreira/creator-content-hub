@@ -1,5 +1,6 @@
 package com.creatorcontenthub.infrastructure.http
 
+import com.creatorcontenthub.domain.exception.TooManyRequestsException
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.plugins.statuspages.*
@@ -25,6 +26,31 @@ fun Application.configureStatusPages() {
                 HttpStatusCode.BadRequest,
                 cause.message ?: "Invalid request",
                 "INVALID_REQUEST"
+            )
+        }
+
+        /**
+         * 🆕 BACKPRESSURE — rejeição controlada
+         *
+         * Mapeia saturação do sistema para HTTP 429.
+         *
+         * IMPORTANTE:
+         * - não é erro interno → usar log.warn
+         * - mantém contrato de resposta consistente
+         */
+        exception<TooManyRequestsException> { call, cause ->
+
+            val requestId = call.requestId()
+
+            log.warn(
+                "[requestId=$requestId] Too many requests on ${call.request.path()}",
+                cause
+            )
+
+            call.respondError(
+                HttpStatusCode.TooManyRequests,
+                cause.message ?: "Too many requests. Please try again later.",
+                "TOO_MANY_REQUESTS"
             )
         }
 

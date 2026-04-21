@@ -5,7 +5,6 @@ import com.creatorcontenthub.controller.textRoutes
 import com.creatorcontenthub.controller.exportRoutes
 import com.creatorcontenthub.controller.ingestRoutes
 import com.creatorcontenthub.controller.metricsRoutes
-import com.creatorcontenthub.infrastructure.http.configureMetrics
 import com.creatorcontenthub.infrastructure.http.configureRequestId
 import com.creatorcontenthub.infrastructure.http.configureStatusPages
 import com.creatorcontenthub.infrastructure.http.requestId
@@ -21,6 +20,7 @@ import com.creatorcontenthub.infrastructure.adapter.YtDlpVideoIngestionAdapter
 import com.creatorcontenthub.infrastructure.store.InMemoryJobStatusStore
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
 import com.creatorcontenthub.infrastructure.metrics.IngestionWindowMetrics
+import com.creatorcontenthub.infrastructure.concurrency.SemaphoreConcurrencyController // ✅ NOVO
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
@@ -35,6 +35,12 @@ import io.ktor.server.request.*
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+
+// ✅ NOVOS IMPORTS
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 
 private val log = LoggerFactory.getLogger("JobCleanupScheduler")
 
@@ -108,10 +114,26 @@ fun Application.module() {
         ingestionWindowMetrics
     )
 
+    // =============================
+    // BACKPRESSURE (FASE 10)
+    // =============================
+
+    val maxConcurrentJobs = 4
+    val acquireTimeoutMillis = 2000L
+
+    // ✅ CONTROLE DE CONCORRÊNCIA
+    val concurrencyController = SemaphoreConcurrencyController(maxConcurrentJobs)
+
+    // ✅ COROUTINE SCOPE GERENCIADO
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     val ingestYoutubeUseCase = IngestYoutubeUseCase(
         videoIngestionAdapter,
         jobStatusStore,
-        ingestionMetrics
+        ingestionMetrics,
+        concurrencyController,
+        acquireTimeoutMillis, // ✅ FIX: timeout configurado
+        applicationScope      // ✅ FIX: posição correta
     )
 
     // =============================
@@ -143,6 +165,9 @@ fun Application.module() {
 
         scheduler.shutdown()
 
+        // ✅ FINALIZA COROUTINES
+        applicationScope.cancel()
+
         try {
             if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
                 scheduler.shutdownNow()
@@ -162,7 +187,7 @@ fun Application.module() {
         ingestYoutubeUseCase,
         jobStatusStore,
         ingestionMetrics,
-        ingestionWindowMetrics // 🔥 PASSANDO CORRETAMENTE
+        ingestionWindowMetrics
     )
 }
 
@@ -207,7 +232,7 @@ fun Application.configureRouting(
     ingestYoutubeUseCase: IngestYoutubeUseCase,
     jobStatusStore: InMemoryJobStatusStore,
     ingestionMetrics: IngestionMetrics,
-    ingestionWindowMetrics: IngestionWindowMetrics // 🔥 ADICIONADO
+    ingestionWindowMetrics: IngestionWindowMetrics
 ) {
     routing {
         healthRoutes()
@@ -219,7 +244,6 @@ fun Application.configureRouting(
             jobStatusStore
         )
 
-        // 🔥 MÉTRICAS COMPLETAS
         metricsRoutes(
             ingestionMetrics,
             ingestionWindowMetrics
