@@ -107,7 +107,6 @@ class YtDlpVideoIngestionAdapter(
 
                 jobStateStore.markDone(jobId)
 
-                metrics.incrementSucceeded()
                 success = true
 
             } catch (ex: Exception) {

@@ -5,15 +5,6 @@ import com.creatorcontenthub.application.dto.IngestionMetricsSnapshot
 import com.creatorcontenthub.domain.model.ErrorType
 import java.util.concurrent.atomic.AtomicLong
 
-/**
- * Métricas de ingestão de mídia.
- *
- * Regras:
- * - incrementStarted() deve ser chamado apenas no UseCase
- * - falhas DEVEM ser registradas via incrementFailed(errorType)
- *
- * Thread-safe via AtomicLong.
- */
 class IngestionMetrics {
 
     private val jobsStarted = AtomicLong(0)
@@ -21,10 +12,12 @@ class IngestionMetrics {
     private val jobsFailed = AtomicLong(0)
     private val totalProcessingTimeMs = AtomicLong(0)
 
-    // Classificação de falhas
     private val timeoutFailures = AtomicLong(0)
     private val processFailures = AtomicLong(0)
     private val unknownFailures = AtomicLong(0)
+
+    // 🆕 BACKPRESSURE
+    private val ingestionQueueRejections = AtomicLong(0)
 
     fun incrementStarted() {
         jobsStarted.incrementAndGet()
@@ -34,9 +27,6 @@ class IngestionMetrics {
         jobsSucceeded.incrementAndGet()
     }
 
-    /**
-     * Fonte única de verdade para falhas.
-     */
     fun incrementFailed(errorType: ErrorType) {
         jobsFailed.incrementAndGet()
 
@@ -55,8 +45,16 @@ class IngestionMetrics {
     }
 
     /**
-     * 🔴 SNAPSHOT LEGADO (delegado)
+     * 🆕 PADRONIZADO (mesmo nome usado no controller)
      */
+    fun incrementQueueRejections() {
+        ingestionQueueRejections.incrementAndGet()
+    }
+
+    fun getQueueRejections(): Long {
+        return ingestionQueueRejections.get()
+    }
+
     fun snapshot(): IngestionMetricsResponse {
         val v2 = snapshotV2()
 
@@ -105,7 +103,10 @@ class IngestionMetrics {
             avgProcessingTimeMs = avgProcessingTimeMs,
             failedTimeout = timeoutFailures.get(),
             failedProcess = processFailures.get(),
-            failedUnknown = unknownFailures.get()
+            failedUnknown = unknownFailures.get(),
+
+            // 🆕 CRÍTICO
+            rejected = ingestionQueueRejections.get()
         )
     }
 }

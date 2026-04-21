@@ -8,6 +8,8 @@ data class IngestionMetricsSnapshot(
     val successRate: Double,
     val failureRate: Double,
 
+    val rejected: Long,
+
     val avgProcessingTimeMs: Long,
 
     val failedTimeout: Long,
