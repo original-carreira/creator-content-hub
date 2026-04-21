@@ -1,8 +1,12 @@
 package com.creatorcontenthub.application.dto
 
-import com.creatorcontenthub.domain.model.JobStatus
-
 data class IngestStatusResponse(
     val jobId: String,
-    val status: JobStatus
+    val status: String,
+    val createdAt: Long,
+    val startedAt: Long?,
+    val finishedAt: Long?,   // ✔ corrigido
+
+    val errorType: String?,
+    val errorMessage: String?
 )

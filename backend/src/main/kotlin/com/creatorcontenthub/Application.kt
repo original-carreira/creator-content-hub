@@ -19,6 +19,8 @@ import com.creatorcontenthub.infrastructure.adapter.FallbackTextProcessorAdapter
 import com.creatorcontenthub.infrastructure.adapter.TxtExporterAdapter
 import com.creatorcontenthub.infrastructure.adapter.YtDlpVideoIngestionAdapter
 import com.creatorcontenthub.infrastructure.store.InMemoryJobStatusStore
+import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
+import com.creatorcontenthub.infrastructure.metrics.IngestionWindowMetrics
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
@@ -34,7 +36,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
-// 🔧 Logger dedicado ao scheduler
 private val log = LoggerFactory.getLogger("JobCleanupScheduler")
 
 fun main() {
@@ -90,25 +91,31 @@ fun Application.module() {
     val exportTextUseCase = ExportTextUseCase(txtExporter)
 
     // =============================
-    // INGEST YOUTUBE
+    // INGEST YOUTUBE + MÉTRICAS
     // =============================
 
     val executor = Executors.newFixedThreadPool(4)
-
     val jobStatusStore = InMemoryJobStatusStore()
+
+    // 🔥 MÉTRICAS (SINGLETONS)
+    val ingestionMetrics = IngestionMetrics()
+    val ingestionWindowMetrics = IngestionWindowMetrics()
 
     val videoIngestionAdapter = YtDlpVideoIngestionAdapter(
         executor,
-        jobStatusStore
+        jobStatusStore,
+        ingestionMetrics,
+        ingestionWindowMetrics
     )
 
     val ingestYoutubeUseCase = IngestYoutubeUseCase(
         videoIngestionAdapter,
-        jobStatusStore
+        jobStatusStore,
+        ingestionMetrics
     )
 
     // =============================
-    // SCHEDULER (ÚNICO E CORRETO)
+    // SCHEDULER
     // =============================
 
     val scheduler: ScheduledExecutorService =
@@ -130,10 +137,6 @@ fun Application.module() {
         1,
         TimeUnit.MINUTES
     )
-
-    // =============================
-    // LIFECYCLE (CORRETO)
-    // =============================
 
     environment.monitor.subscribe(ApplicationStopped) {
         log.info("Shutting down job cleanup scheduler...")
@@ -157,7 +160,9 @@ fun Application.module() {
         processTextUseCase,
         exportTextUseCase,
         ingestYoutubeUseCase,
-        jobStatusStore
+        jobStatusStore,
+        ingestionMetrics,
+        ingestionWindowMetrics // 🔥 PASSANDO CORRETAMENTE
     )
 }
 
@@ -200,16 +205,24 @@ fun Application.configureRouting(
     processTextUseCase: ProcessTextUseCase,
     exportTextUseCase: ExportTextUseCase,
     ingestYoutubeUseCase: IngestYoutubeUseCase,
-    jobStatusStore: InMemoryJobStatusStore
+    jobStatusStore: InMemoryJobStatusStore,
+    ingestionMetrics: IngestionMetrics,
+    ingestionWindowMetrics: IngestionWindowMetrics // 🔥 ADICIONADO
 ) {
     routing {
         healthRoutes()
         textRoutes(processTextUseCase)
         exportRoutes(exportTextUseCase)
+
         ingestRoutes(
             ingestYoutubeUseCase,
             jobStatusStore
         )
-        metricsRoutes()
+
+        // 🔥 MÉTRICAS COMPLETAS
+        metricsRoutes(
+            ingestionMetrics,
+            ingestionWindowMetrics
+        )
     }
 }

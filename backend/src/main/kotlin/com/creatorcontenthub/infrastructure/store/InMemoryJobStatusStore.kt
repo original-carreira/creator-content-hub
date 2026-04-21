@@ -1,63 +1,81 @@
 package com.creatorcontenthub.infrastructure.store
 
+import com.creatorcontenthub.domain.model.ErrorType
+import com.creatorcontenthub.domain.model.JobState
 import com.creatorcontenthub.domain.model.JobStatus
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * TTL baseado exclusivamente em createdAt.
- *
- * IMPORTANTE:
- * - Jobs podem expirar mesmo ainda em execução.
- * - Esse comportamento é intencional para manter simplicidade.
- * - Não há extensão de TTL após conclusão.
- */
 private const val TTL_MILLIS = 10 * 60 * 1000 // 10 minutos
 
 class InMemoryJobStatusStore {
 
-    data class JobEntry(
-        val status: JobStatus,
-        val createdAt: Long
-    )
-
-    private val store = ConcurrentHashMap<String, JobEntry>()
+    private val store = ConcurrentHashMap<String, JobState>()
 
     fun create(jobId: String) {
-        store[jobId] = JobEntry(
+        val now = System.currentTimeMillis()
+
+        store[jobId] = JobState(
             status = JobStatus.PROCESSING,
-            createdAt = System.currentTimeMillis()
+            createdAt = now,
+            startedAt = now,
+            finishedAt = null,
+            errorType = null,
+            errorMessage = null
         )
+    }
+
+    fun markDone(jobId: String) {
+        store.computeIfPresent(jobId) { _, current ->
+            current.copy(
+                status = JobStatus.DONE,
+                finishedAt = System.currentTimeMillis(),
+                errorType = null,
+                errorMessage = null
+            )
+        }
     }
 
     /**
-     * Atualiza apenas o status, SEM alterar o createdAt (TTL fixo)
+     * NOVO MODELO (principal)
      */
-    fun update(jobId: String, status: JobStatus) {
-        val existing = store[jobId] ?: return
-
-        store[jobId] = JobEntry(
-            status = status,
-            createdAt = existing.createdAt // mantém TTL original
-        )
+    fun markFailed(
+        jobId: String,
+        errorType: ErrorType,
+        errorMessage: String
+    ) {
+        store.computeIfPresent(jobId) { _, current ->
+            current.copy(
+                status = JobStatus.FAILED,
+                finishedAt = System.currentTimeMillis(),
+                errorType = errorType,
+                errorMessage = errorMessage
+            )
+        }
     }
 
-    fun get(jobId: String): JobStatus? {
-        val entry = store[jobId] ?: return null
+    /**
+     * COMPATIBILIDADE (LEGADO)
+     */
+    @Deprecated("Use markFailed(jobId, errorType, errorMessage)")
+    fun markFailed(jobId: String, error: String) {
+        markFailed(jobId, ErrorType.UNKNOWN, error)
+    }
 
-        // cleanup passivo
-        if (isExpired(entry)) {
+    fun get(jobId: String): JobState? {
+        val state = store[jobId] ?: return null
+
+        if (isExpired(state)) {
             store.remove(jobId)
             return null
         }
 
-        return entry.status
+        return state
     }
 
     fun exists(jobId: String): Boolean {
-        val entry = store[jobId] ?: return false
+        val state = store[jobId] ?: return false
 
-        // cleanup passivo
-        if (isExpired(entry)) {
+        if (isExpired(state)) {
             store.remove(jobId)
             return false
         }
@@ -65,22 +83,19 @@ class InMemoryJobStatusStore {
         return true
     }
 
-    private fun isExpired(entry: JobEntry): Boolean {
+    private fun isExpired(state: JobState): Boolean {
         val now = System.currentTimeMillis()
-        return now - entry.createdAt > TTL_MILLIS
+        return now - state.startedAt > TTL_MILLIS
     }
 
-    /**
-     * Cleanup ativo (scheduler-safe)
-     * - sem removeIf
-     * - thread-safe com ConcurrentHashMap
-     */
     fun cleanup() {
         val now = System.currentTimeMillis()
 
-        store.forEach { (jobId, entry) ->
-            if (now - entry.createdAt > TTL_MILLIS) {
-                store.remove(jobId)
+        val iterator = store.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            if (now - entry.value.startedAt > TTL_MILLIS) {
+                iterator.remove()
             }
         }
     }

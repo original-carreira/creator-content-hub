@@ -13,12 +13,9 @@ import io.ktor.server.routing.*
 
 fun Route.ingestRoutes(
     useCase: IngestYoutubeUseCase,
-    jobStatusStore: InMemoryJobStatusStore // ✅ NOVA DEPENDÊNCIA
+    jobStatusStore: InMemoryJobStatusStore
 ) {
 
-    // ==============================
-    // POST /ingest/youtube (EXISTENTE)
-    // ==============================
     post("/ingest/youtube") {
 
         val request = try {
@@ -58,14 +55,10 @@ fun Route.ingestRoutes(
         call.respondSuccess(response)
     }
 
-    // ==============================
-    // GET /ingest/{jobId} (NOVO)
-    // ==============================
     get("/ingest/{jobId}") {
 
         val jobId = call.parameters["jobId"]
 
-        // ✔ validação básica
         if (jobId.isNullOrBlank()) {
             call.respondError(
                 HttpStatusCode.BadRequest,
@@ -74,8 +67,9 @@ fun Route.ingestRoutes(
             return@get
         }
 
-        // ✔ verificação de existência
-        if (!jobStatusStore.exists(jobId)) {
+        val state = jobStatusStore.get(jobId)
+
+        if (state == null) {
             call.respondError(
                 HttpStatusCode.NotFound,
                 "Job not found"
@@ -83,11 +77,15 @@ fun Route.ingestRoutes(
             return@get
         }
 
-        val status = jobStatusStore.get(jobId)!!
-
         val response = IngestStatusResponse(
             jobId = jobId,
-            status = status
+            status = state.status.name,              // ✔ enum → string
+            createdAt = state.createdAt,             // ✔ novo campo
+            startedAt = state.startedAt,
+            finishedAt = state.finishedAt,
+
+            errorType = state.errorType?.name,       // ✔ novo
+            errorMessage = state.errorMessage        // ✔ novo
         )
 
         call.respondSuccess(response)

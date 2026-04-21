@@ -1,8 +1,10 @@
 package com.creatorcontenthub.infrastructure.adapter
 
 import com.creatorcontenthub.application.port.VideoIngestionPort
-import com.creatorcontenthub.domain.model.JobStatus
-import com.creatorcontenthub.infrastructure.exception.ExternalServiceException
+import com.creatorcontenthub.domain.model.ErrorType
+import com.creatorcontenthub.infrastructure.metrics.IngestionEvent
+import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
+import com.creatorcontenthub.infrastructure.metrics.IngestionWindowMetrics
 import com.creatorcontenthub.infrastructure.store.InMemoryJobStatusStore
 import java.io.File
 import java.util.concurrent.ExecutorService
@@ -10,78 +12,122 @@ import java.util.concurrent.TimeUnit
 
 class YtDlpVideoIngestionAdapter(
     private val executor: ExecutorService,
-    private val jobStatusStore: InMemoryJobStatusStore // ✅ NOVA DEPENDÊNCIA
+    private val jobStateStore: InMemoryJobStatusStore,
+    private val metrics: IngestionMetrics,
+    private val ingestionWindowMetrics: IngestionWindowMetrics
 ) : VideoIngestionPort {
 
     override fun ingest(url: String, jobId: String) {
 
         executor.submit {
 
+            // 🔥 ESSENCIAL: contabiliza início do job
+            metrics.incrementStarted()
+
             val startTime = System.currentTimeMillis()
-
-            val outputDir = File("/tmp/creator-content-hub")
-            if (!outputDir.exists()) {
-                outputDir.mkdirs()
-            }
-
-            val outputPath = "${outputDir.absolutePath}/$jobId.mp3"
-
-            val processBuilder = ProcessBuilder(
-                "yt-dlp",
-                "-x",
-                "--audio-format", "mp3",
-                "-o", outputPath,
-                url
-            )
-
-            processBuilder.redirectErrorStream(true)
+            var success = false
 
             try {
+
+                val outputDir = File("/tmp/creator-content-hub")
+                if (!outputDir.exists()) {
+                    outputDir.mkdirs()
+                }
+
+                val outputPath = "${outputDir.absolutePath}/$jobId.mp3"
+
+                val processBuilder = ProcessBuilder(
+                    "yt-dlp",
+                    "-x",
+                    "--audio-format", "mp3",
+                    "-o", outputPath,
+                    url
+                )
+
+                processBuilder.redirectErrorStream(true)
+
                 println("yt-dlp download started (jobId=$jobId)")
 
                 val process = processBuilder.start()
 
-                val output = process.inputStream.bufferedReader().readText()
+                val output = process.inputStream.bufferedReader().use { it.readText() }
 
                 val finished = process.waitFor(10, TimeUnit.MINUTES)
 
+                // 🔴 TIMEOUT
                 if (!finished) {
-                    process.destroy()
+                    process.destroyForcibly()
 
-                    // ✅ ATUALIZA STATUS COMO FAILED
-                    jobStatusStore.update(jobId, JobStatus.FAILED)
+                    jobStateStore.markFailed(
+                        jobId,
+                        ErrorType.TIMEOUT,
+                        "Process timed out"
+                    )
 
-                    throw ExternalServiceException("yt-dlp timeout (jobId=$jobId)")
+                    metrics.incrementFailed()
+                    metrics.incrementFailedByType(ErrorType.TIMEOUT)
+
+                    return@submit
                 }
 
                 val exitCode = process.exitValue()
 
+                // 🔴 PROCESS ERROR
                 if (exitCode != 0) {
 
-                    // ✅ ATUALIZA STATUS COMO FAILED
-                    jobStatusStore.update(jobId, JobStatus.FAILED)
+                    val sanitized = output.take(300)
 
-                    throw ExternalServiceException(
-                        "yt-dlp failed (jobId=$jobId, stderr=$output)"
+                    jobStateStore.markFailed(
+                        jobId,
+                        ErrorType.PROCESS_ERROR,
+                        "yt-dlp exited with code $exitCode: $sanitized"
                     )
+
+                    metrics.incrementFailed()
+                    metrics.incrementFailedByType(ErrorType.PROCESS_ERROR)
+
+                    return@submit
                 }
 
-                val duration = System.currentTimeMillis() - startTime
+                // 🟢 SUCCESS
+                println("yt-dlp download completed (jobId=$jobId)")
 
-                println("yt-dlp download completed (jobId=$jobId, duration=${duration}ms)")
+                jobStateStore.markDone(jobId)
 
-                // ✅ SUCESSO
-                jobStatusStore.update(jobId, JobStatus.DONE)
+                metrics.incrementSucceeded()
+                success = true
 
             } catch (ex: Exception) {
 
-                println("yt-dlp failed (jobId=$jobId, error=${ex.message})")
+                val message = ex.message?.take(300) ?: "Unexpected error"
 
-                // ✅ GARANTE FAILED MESMO EM ERRO INESPERADO
-                jobStatusStore.update(jobId, JobStatus.FAILED)
+                println("yt-dlp failed (jobId=$jobId, error=$message)")
 
-                // ⚠️ mantém comportamento original (sem regressão)
-                throw ExternalServiceException("yt-dlp execution error", ex)
+                jobStateStore.markFailed(
+                    jobId,
+                    ErrorType.UNKNOWN,
+                    message
+                )
+
+                metrics.incrementFailed()
+                metrics.incrementFailedByType(ErrorType.UNKNOWN)
+
+            } finally {
+
+                val endTime = System.currentTimeMillis()
+                val duration = endTime - startTime
+
+                val event = IngestionEvent(
+                    timestamp = endTime,
+                    success = success,
+                    processingTimeMs = duration
+                )
+
+                // 🔥 registro da janela deslizante
+                ingestionWindowMetrics.record(event)
+
+                // 🔥 métricas acumuladas
+                metrics.addProcessingTime(duration)
             }
         }
     }

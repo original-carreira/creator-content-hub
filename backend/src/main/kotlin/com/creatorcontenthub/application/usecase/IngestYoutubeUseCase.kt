@@ -5,26 +5,31 @@ import com.creatorcontenthub.application.dto.IngestYoutubeResponse
 import com.creatorcontenthub.application.port.VideoIngestionPort
 import com.creatorcontenthub.domain.model.JobStatus
 import com.creatorcontenthub.infrastructure.store.InMemoryJobStatusStore
+import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
 import java.util.UUID
 
 class IngestYoutubeUseCase(
     private val videoIngestionPort: VideoIngestionPort,
-    private val jobStatusStore: InMemoryJobStatusStore // ✅ NOVA DEPENDÊNCIA
+    private val jobStateStore: InMemoryJobStatusStore,
+    private val metrics: IngestionMetrics
 ) {
 
     fun execute(request: IngestYoutubeRequest): IngestYoutubeResponse {
 
-        // ✔ Validação defensiva (mantida)
+        // 1. validação
         require(request.url.isNotBlank()) {
             "URL must not be blank"
         }
 
         val jobId = UUID.randomUUID().toString()
 
-        // ✅ REGISTRA STATUS INICIAL NO STORE
-        jobStatusStore.create(jobId)
+        // 2. registrar estado inicial do job
+        jobStateStore.create(jobId)
 
-        // ✔ Execução assíncrona continua igual (sem regressão)
+        // 3. agora sim: job oficialmente iniciado
+        metrics.incrementStarted()
+
+        // 4. execução assíncrona
         videoIngestionPort.ingest(
             url = request.url,
             jobId = jobId
@@ -32,7 +37,7 @@ class IngestYoutubeUseCase(
 
         return IngestYoutubeResponse(
             jobId = jobId,
-            status = JobStatus.PROCESSING.name // ✅ agora consistente com enum
+            status = JobStatus.PROCESSING.name
         )
     }
 }
