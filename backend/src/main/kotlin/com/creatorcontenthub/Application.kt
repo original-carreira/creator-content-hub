@@ -119,7 +119,7 @@ fun Application.module() {
     // =============================
 
     val maxConcurrentJobs = 4
-    val acquireTimeoutMillis = 2000L
+    val acquireTimeoutMillis = 0L
 
     // ✅ CONTROLE DE CONCORRÊNCIA
     val concurrencyController = SemaphoreConcurrencyController(maxConcurrentJobs)

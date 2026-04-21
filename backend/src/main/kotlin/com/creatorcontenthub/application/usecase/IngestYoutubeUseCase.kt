@@ -18,6 +18,7 @@ class IngestYoutubeUseCase(
     private val jobStateStore: InMemoryJobStatusStore,
     private val metrics: IngestionMetrics,
     private val concurrencyControl: ConcurrencyControlPort,
+    private val acquireTimeoutMillis: Long,
     private val scope: CoroutineScope
 ) {
 
@@ -28,7 +29,7 @@ class IngestYoutubeUseCase(
         }
 
         // 🔴 BACKPRESSURE (agora no UseCase)
-        val acquired = concurrencyControl.tryAcquire(0)
+        val acquired = concurrencyControl.tryAcquire(acquireTimeoutMillis)
 
         if (!acquired) {
             metrics.incrementQueueRejections()
