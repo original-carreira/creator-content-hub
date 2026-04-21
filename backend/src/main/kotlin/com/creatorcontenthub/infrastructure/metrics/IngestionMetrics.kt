@@ -8,34 +8,11 @@ import java.util.concurrent.atomic.AtomicLong
 /**
  * Métricas de ingestão de mídia.
  *
+ * Regras:
+ * - incrementStarted() deve ser chamado apenas no UseCase
+ * - falhas DEVEM ser registradas via incrementFailed(errorType)
+ *
  * Thread-safe via AtomicLong.
- * Sem dependências externas.
- *
- * Definições:
- *
- * - ingestion_jobs_started:
- *   Total de jobs iniciados APÓS validação bem-sucedida do request.
- *
- * - ingestion_jobs_succeeded:
- *   Total de jobs concluídos com sucesso (exitCode == 0).
- *
- * - ingestion_jobs_failed:
- *   Total de jobs que falharam, incluindo:
- *     - exceções durante execução
- *     - timeout
- *     - exitCode diferente de 0
- *
- * - ingestion_processing_time_ms_total:
- *   Soma acumulada do tempo de processamento de TODOS os jobs (em milissegundos).
- *
- *   ⚠️ IMPORTANTE:
- *   Esta métrica NÃO representa latência média.
- *
- *   Para calcular a latência média:
- *
- *     avg_latency = totalProcessingTimeMs / jobsSucceeded
- *
- *   (considerando apenas execuções bem-sucedidas)
  */
 class IngestionMetrics {
 
@@ -57,11 +34,12 @@ class IngestionMetrics {
         jobsSucceeded.incrementAndGet()
     }
 
-    fun incrementFailed() {
+    /**
+     * Fonte única de verdade para falhas.
+     */
+    fun incrementFailed(errorType: ErrorType) {
         jobsFailed.incrementAndGet()
-    }
 
-    fun incrementFailedByType(errorType: ErrorType) {
         when (errorType) {
             ErrorType.TIMEOUT -> timeoutFailures.incrementAndGet()
             ErrorType.PROCESS_ERROR -> processFailures.incrementAndGet()
@@ -70,13 +48,14 @@ class IngestionMetrics {
     }
 
     fun addProcessingTime(durationMs: Long) {
+        require(durationMs >= 0) {
+            "Processing time cannot be negative"
+        }
         totalProcessingTimeMs.addAndGet(durationMs)
     }
 
     /**
-     * 🔴 SNAPSHOT LEGADO (AGORA DELEGA PARA V2)
-     *
-     * Sem lógica própria → evita divergência
+     * 🔴 SNAPSHOT LEGADO (delegado)
      */
     fun snapshot(): IngestionMetricsResponse {
         val v2 = snapshotV2()
@@ -98,7 +77,7 @@ class IngestionMetrics {
     }
 
     /**
-     * 🟢 FONTE DE VERDADE (V2)
+     * 🟢 FONTE DE VERDADE
      */
     fun snapshotV2(): IngestionMetricsSnapshot {
         val started = jobsStarted.get()

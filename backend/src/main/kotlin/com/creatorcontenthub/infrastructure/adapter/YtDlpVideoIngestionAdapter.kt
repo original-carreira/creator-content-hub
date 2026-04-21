@@ -6,7 +6,9 @@ import com.creatorcontenthub.infrastructure.metrics.IngestionEvent
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
 import com.creatorcontenthub.infrastructure.metrics.IngestionWindowMetrics
 import com.creatorcontenthub.infrastructure.store.InMemoryJobStatusStore
+import java.io.BufferedReader
 import java.io.File
+import java.io.InputStreamReader
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 
@@ -17,12 +19,13 @@ class YtDlpVideoIngestionAdapter(
     private val ingestionWindowMetrics: IngestionWindowMetrics
 ) : VideoIngestionPort {
 
+    companion object {
+        private const val MAX_OUTPUT_LINES = 200
+    }
+
     override fun ingest(url: String, jobId: String) {
 
         executor.submit {
-
-            // 🔥 ESSENCIAL: contabiliza início do job
-            metrics.incrementStarted()
 
             val startTime = System.currentTimeMillis()
             var success = false
@@ -50,7 +53,19 @@ class YtDlpVideoIngestionAdapter(
 
                 val process = processBuilder.start()
 
-                val output = process.inputStream.bufferedReader().use { it.readText() }
+                // ✅ leitura segura (limitada)
+                val outputLines = mutableListOf<String>()
+                BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
+                    var line: String?
+                    var count = 0
+
+                    while (reader.readLine().also { line = it } != null) {
+                        if (count < MAX_OUTPUT_LINES) {
+                            outputLines.add(line!!)
+                        }
+                        count++
+                    }
+                }
 
                 val finished = process.waitFor(10, TimeUnit.MINUTES)
 
@@ -64,8 +79,7 @@ class YtDlpVideoIngestionAdapter(
                         "Process timed out"
                     )
 
-                    metrics.incrementFailed()
-                    metrics.incrementFailedByType(ErrorType.TIMEOUT)
+                    metrics.incrementFailed(ErrorType.TIMEOUT)
 
                     return@submit
                 }
@@ -75,7 +89,7 @@ class YtDlpVideoIngestionAdapter(
                 // 🔴 PROCESS ERROR
                 if (exitCode != 0) {
 
-                    val sanitized = output.take(300)
+                    val sanitized = outputLines.joinToString("\n").take(300)
 
                     jobStateStore.markFailed(
                         jobId,
@@ -83,8 +97,7 @@ class YtDlpVideoIngestionAdapter(
                         "yt-dlp exited with code $exitCode: $sanitized"
                     )
 
-                    metrics.incrementFailed()
-                    metrics.incrementFailedByType(ErrorType.PROCESS_ERROR)
+                    metrics.incrementFailed(ErrorType.PROCESS_ERROR)
 
                     return@submit
                 }
@@ -109,8 +122,7 @@ class YtDlpVideoIngestionAdapter(
                     message
                 )
 
-                metrics.incrementFailed()
-                metrics.incrementFailedByType(ErrorType.UNKNOWN)
+                metrics.incrementFailed(ErrorType.UNKNOWN)
 
             } finally {
 
@@ -123,10 +135,7 @@ class YtDlpVideoIngestionAdapter(
                     processingTimeMs = duration
                 )
 
-                // 🔥 registro da janela deslizante
                 ingestionWindowMetrics.record(event)
-
-                // 🔥 métricas acumuladas
                 metrics.addProcessingTime(duration)
             }
         }

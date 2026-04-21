@@ -26,36 +26,34 @@ class InMemoryJobStatusStore {
 
     fun markDone(jobId: String) {
         store.computeIfPresent(jobId) { _, current ->
+            val now = maxOf(System.currentTimeMillis(), current.startedAt)
+
             current.copy(
                 status = JobStatus.DONE,
-                finishedAt = System.currentTimeMillis(),
+                finishedAt = now,
                 errorType = null,
                 errorMessage = null
             )
         }
     }
 
-    /**
-     * NOVO MODELO (principal)
-     */
     fun markFailed(
         jobId: String,
         errorType: ErrorType,
         errorMessage: String
     ) {
         store.computeIfPresent(jobId) { _, current ->
+            val now = maxOf(System.currentTimeMillis(), current.startedAt)
+
             current.copy(
                 status = JobStatus.FAILED,
-                finishedAt = System.currentTimeMillis(),
+                finishedAt = now,
                 errorType = errorType,
                 errorMessage = errorMessage
             )
         }
     }
 
-    /**
-     * COMPATIBILIDADE (LEGADO)
-     */
     @Deprecated("Use markFailed(jobId, errorType, errorMessage)")
     fun markFailed(jobId: String, error: String) {
         markFailed(jobId, ErrorType.UNKNOWN, error)
@@ -85,7 +83,9 @@ class InMemoryJobStatusStore {
 
     private fun isExpired(state: JobState): Boolean {
         val now = System.currentTimeMillis()
-        return now - state.startedAt > TTL_MILLIS
+        val referenceTime = state.finishedAt ?: state.startedAt
+
+        return now - referenceTime > TTL_MILLIS
     }
 
     fun cleanup() {
@@ -94,7 +94,11 @@ class InMemoryJobStatusStore {
         val iterator = store.entries.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()
-            if (now - entry.value.startedAt > TTL_MILLIS) {
+            val state = entry.value
+
+            val referenceTime = state.finishedAt ?: state.startedAt
+
+            if (now - referenceTime > TTL_MILLIS) {
                 iterator.remove()
             }
         }

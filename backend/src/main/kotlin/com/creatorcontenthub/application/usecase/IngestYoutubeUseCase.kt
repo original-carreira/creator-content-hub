@@ -3,9 +3,10 @@ package com.creatorcontenthub.application.usecase
 import com.creatorcontenthub.application.dto.IngestYoutubeRequest
 import com.creatorcontenthub.application.dto.IngestYoutubeResponse
 import com.creatorcontenthub.application.port.VideoIngestionPort
+import com.creatorcontenthub.domain.model.ErrorType
 import com.creatorcontenthub.domain.model.JobStatus
-import com.creatorcontenthub.infrastructure.store.InMemoryJobStatusStore
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
+import com.creatorcontenthub.infrastructure.store.InMemoryJobStatusStore
 import java.util.UUID
 
 class IngestYoutubeUseCase(
@@ -26,14 +27,31 @@ class IngestYoutubeUseCase(
         // 2. registrar estado inicial do job
         jobStateStore.create(jobId)
 
-        // 3. agora sim: job oficialmente iniciado
+        // 3. job oficialmente iniciado
         metrics.incrementStarted()
 
-        // 4. execução assíncrona
-        videoIngestionPort.ingest(
-            url = request.url,
-            jobId = jobId
-        )
+        try {
+            // 4. execução assíncrona
+            videoIngestionPort.ingest(
+                url = request.url,
+                jobId = jobId
+            )
+        } catch (ex: Exception) {
+
+            val message = ex.message ?: "Failed to submit ingestion job"
+
+            // 🔴 evita job zumbi
+            jobStateStore.markFailed(
+                jobId,
+                ErrorType.UNKNOWN,
+                message
+            )
+
+            // 🔴 consistência de métricas
+            metrics.incrementFailed(ErrorType.UNKNOWN)
+
+            throw ex
+        }
 
         return IngestYoutubeResponse(
             jobId = jobId,
