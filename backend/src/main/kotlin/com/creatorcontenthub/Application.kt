@@ -2,19 +2,23 @@ package com.creatorcontenthub
 
 import com.creatorcontenthub.controller.healthRoutes
 import com.creatorcontenthub.controller.textRoutes
-import com.creatorcontenthub.controller.exportRoutes // 🔥 NOVO
+import com.creatorcontenthub.controller.exportRoutes
+import com.creatorcontenthub.controller.ingestRoutes
+import com.creatorcontenthub.controller.metricsRoutes
 import com.creatorcontenthub.infrastructure.http.configureMetrics
 import com.creatorcontenthub.infrastructure.http.configureRequestId
 import com.creatorcontenthub.infrastructure.http.configureStatusPages
 import com.creatorcontenthub.infrastructure.http.requestId
 import com.creatorcontenthub.infrastructure.http.duration
 import com.creatorcontenthub.application.usecase.ProcessTextUseCase
-import com.creatorcontenthub.application.usecase.ExportTextUseCase // 🔥 NOVO
-import com.creatorcontenthub.controller.metricsRoutes
+import com.creatorcontenthub.application.usecase.ExportTextUseCase
+import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
 import com.creatorcontenthub.infrastructure.adapter.LocalTextProcessorAdapter
 import com.creatorcontenthub.infrastructure.adapter.PythonTextProcessorAdapter
 import com.creatorcontenthub.infrastructure.adapter.FallbackTextProcessorAdapter
-import com.creatorcontenthub.infrastructure.adapter.TxtExporterAdapter // 🔥 NOVO
+import com.creatorcontenthub.infrastructure.adapter.TxtExporterAdapter
+import com.creatorcontenthub.infrastructure.adapter.YtDlpVideoIngestionAdapter
+import com.creatorcontenthub.infrastructure.store.InMemoryJobStatusStore
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
@@ -24,7 +28,14 @@ import io.ktor.server.plugins.callloging.*
 import io.ktor.server.routing.*
 import kotlinx.serialization.json.Json
 import org.slf4j.event.Level
+import org.slf4j.LoggerFactory
 import io.ktor.server.request.*
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
+
+// 🔧 Logger dedicado ao scheduler
+private val log = LoggerFactory.getLogger("JobCleanupScheduler")
 
 fun main() {
     embeddedServer(
@@ -41,7 +52,9 @@ fun Application.module() {
     configureSerialization()
     configureStatusPages()
 
-    // 🔥 COMPOSIÇÃO PROCESSAMENTO
+    // =============================
+    // PROCESSAMENTO
+    // =============================
 
     val usePython = environment.config
         .propertyOrNull("app.usePython")
@@ -69,14 +82,82 @@ fun Application.module() {
 
     val processTextUseCase = ProcessTextUseCase(adapter)
 
-    // 🔥 NOVO — COMPOSIÇÃO EXPORT
+    // =============================
+    // EXPORT
+    // =============================
+
     val txtExporter = TxtExporterAdapter()
     val exportTextUseCase = ExportTextUseCase(txtExporter)
 
-    // 🔥 ROUTING ATUALIZADO
+    // =============================
+    // INGEST YOUTUBE
+    // =============================
+
+    val executor = Executors.newFixedThreadPool(4)
+
+    val jobStatusStore = InMemoryJobStatusStore()
+
+    val videoIngestionAdapter = YtDlpVideoIngestionAdapter(
+        executor,
+        jobStatusStore
+    )
+
+    val ingestYoutubeUseCase = IngestYoutubeUseCase(
+        videoIngestionAdapter,
+        jobStatusStore
+    )
+
+    // =============================
+    // SCHEDULER (ÚNICO E CORRETO)
+    // =============================
+
+    val scheduler: ScheduledExecutorService =
+        Executors.newSingleThreadScheduledExecutor { runnable ->
+            Thread(runnable, "job-cleanup-scheduler").apply {
+                isDaemon = true
+            }
+        }
+
+    scheduler.scheduleAtFixedRate(
+        {
+            try {
+                jobStatusStore.cleanup()
+            } catch (ex: Exception) {
+                log.error("Error during job cleanup", ex)
+            }
+        },
+        1,
+        1,
+        TimeUnit.MINUTES
+    )
+
+    // =============================
+    // LIFECYCLE (CORRETO)
+    // =============================
+
+    environment.monitor.subscribe(ApplicationStopped) {
+        log.info("Shutting down job cleanup scheduler...")
+
+        scheduler.shutdown()
+
+        try {
+            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                scheduler.shutdownNow()
+            }
+        } catch (ex: InterruptedException) {
+            scheduler.shutdownNow()
+        }
+    }
+
+    // =============================
+    // ROUTING
+    // =============================
+
     configureRouting(
         processTextUseCase,
-        exportTextUseCase
+        exportTextUseCase,
+        ingestYoutubeUseCase,
+        jobStatusStore
     )
 }
 
@@ -117,12 +198,18 @@ fun Application.configureSerialization() {
 // 🌐 ROUTING
 fun Application.configureRouting(
     processTextUseCase: ProcessTextUseCase,
-    exportTextUseCase: ExportTextUseCase // 🔥 NOVO
+    exportTextUseCase: ExportTextUseCase,
+    ingestYoutubeUseCase: IngestYoutubeUseCase,
+    jobStatusStore: InMemoryJobStatusStore
 ) {
     routing {
         healthRoutes()
         textRoutes(processTextUseCase)
-        exportRoutes(exportTextUseCase) // 🔥 NOVO
+        exportRoutes(exportTextUseCase)
+        ingestRoutes(
+            ingestYoutubeUseCase,
+            jobStatusStore
+        )
         metricsRoutes()
     }
 }
