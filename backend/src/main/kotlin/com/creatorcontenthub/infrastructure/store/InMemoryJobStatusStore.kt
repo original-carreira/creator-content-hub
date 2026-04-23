@@ -51,7 +51,8 @@ class InMemoryJobStatusStore {
                 finishedAt = now,
                 errorType = errorType,
                 errorMessage = errorMessage,
-                transcription = null // 🔥 garantir consistência
+                transcription = null,
+                transcriptionCompletedAt = null // ✔ aqui é o lugar correto
             )
         }
     }
