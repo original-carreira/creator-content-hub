@@ -3,6 +3,7 @@ package com.creatorcontenthub.application.usecase
 import com.creatorcontenthub.application.dto.IngestYoutubeRequest
 import com.creatorcontenthub.application.dto.IngestYoutubeResponse
 import com.creatorcontenthub.application.port.ConcurrencyControlPort
+import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.application.port.SummarizationPort
 import com.creatorcontenthub.application.port.TranscriptionPort
 import com.creatorcontenthub.application.port.VideoIngestionPort
@@ -10,20 +11,18 @@ import com.creatorcontenthub.domain.exception.TooManyRequestsException
 import com.creatorcontenthub.domain.model.ErrorType
 import com.creatorcontenthub.domain.model.JobStatus
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
-import com.creatorcontenthub.infrastructure.store.InMemoryJobStatusStore
 import com.creatorcontenthub.domain.exception.TranscriptionTimeoutException
 import com.creatorcontenthub.domain.exception.DownloadTimeoutException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.io.File
-import java.time.Instant
 import java.util.UUID
 
 class IngestYoutubeUseCase(
     private val videoIngestionPort: VideoIngestionPort,
     private val transcriptionPort: TranscriptionPort,
     private val summarizationPort: SummarizationPort,
-    private val jobStateStore: InMemoryJobStatusStore,
+    private val jobRepository: JobRepository,
     private val metrics: IngestionMetrics,
     private val concurrencyControl: ConcurrencyControlPort,
     private val acquireTimeoutMillis: Long,
@@ -46,7 +45,7 @@ class IngestYoutubeUseCase(
         val jobId = UUID.randomUUID().toString()
 
         try {
-            jobStateStore.create(jobId)
+            jobRepository.create(jobId)
             metrics.incrementStarted()
 
             scope.launch {
@@ -104,7 +103,7 @@ class IngestYoutubeUseCase(
                     println("[media-pipeline][summarization] jobId=$jobId duration=${summarizationDuration}ms")
 
                     // 🔹 FINALIZA JOB (AGORA COM SUMMARY)
-                    jobStateStore.markDone(
+                    jobRepository.markDone(
                         jobId = jobId,
                         transcription = safeText,
                         summary = summaryResult.summary,
@@ -124,7 +123,7 @@ class IngestYoutubeUseCase(
                     }
 
                     try {
-                        jobStateStore.markFailed(
+                        jobRepository.markFailed(
                             jobId = jobId,
                             errorType = errorType,
                             errorMessage = message

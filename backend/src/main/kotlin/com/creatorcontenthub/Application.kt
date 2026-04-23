@@ -1,5 +1,6 @@
 package com.creatorcontenthub
 
+import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.controller.healthRoutes
 import com.creatorcontenthub.controller.textRoutes
 import com.creatorcontenthub.controller.exportRoutes
@@ -12,15 +13,11 @@ import com.creatorcontenthub.infrastructure.http.duration
 import com.creatorcontenthub.application.usecase.ProcessTextUseCase
 import com.creatorcontenthub.application.usecase.ExportTextUseCase
 import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
-import com.creatorcontenthub.infrastructure.adapter.LocalTextProcessorAdapter
-import com.creatorcontenthub.infrastructure.adapter.PythonTextProcessorAdapter
-import com.creatorcontenthub.infrastructure.adapter.FallbackTextProcessorAdapter
-import com.creatorcontenthub.infrastructure.adapter.TxtExporterAdapter
-import com.creatorcontenthub.infrastructure.adapter.YtDlpVideoIngestionAdapter
+import com.creatorcontenthub.infrastructure.adapter.*
 import com.creatorcontenthub.infrastructure.store.InMemoryJobStatusStore
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
 import com.creatorcontenthub.infrastructure.metrics.IngestionWindowMetrics
-import com.creatorcontenthub.infrastructure.concurrency.SemaphoreConcurrencyController // ✅ NOVO
+import com.creatorcontenthub.infrastructure.concurrency.SemaphoreConcurrencyController
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
@@ -36,7 +33,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
-// ✅ NOVOS IMPORTS
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -60,7 +56,7 @@ fun Application.module() {
     configureStatusPages()
 
     // =============================
-    // PROCESSAMENTO
+    // PROCESSAMENTO TEXTO
     // =============================
 
     val usePython = environment.config
@@ -97,47 +93,45 @@ fun Application.module() {
     val exportTextUseCase = ExportTextUseCase(txtExporter)
 
     // =============================
-    // INGEST YOUTUBE + MÉTRICAS
+    // INGEST + PIPELINE
     // =============================
 
-    val executor = Executors.newFixedThreadPool(4)
     val jobStatusStore = InMemoryJobStatusStore()
 
-    // 🔥 MÉTRICAS (SINGLETONS)
+    // 🔥 ADAPTAÇÃO CORRETA (PORT)
+    val jobRepository: JobRepository = PostgresJobRepository()
+
     val ingestionMetrics = IngestionMetrics()
     val ingestionWindowMetrics = IngestionWindowMetrics()
 
-    val videoIngestionAdapter = YtDlpVideoIngestionAdapter(
-        executor,
-        jobStatusStore,
-        ingestionMetrics,
-        ingestionWindowMetrics
-    )
+    val videoIngestionAdapter = YtDlpVideoIngestionAdapter()
+    val transcriptionAdapter = WhisperTranscriptionAdapter()
+    val summarizationAdapter = FallbackSummarizationAdapter()
 
     // =============================
-    // BACKPRESSURE (FASE 10)
+    // CONCORRÊNCIA / BACKPRESSURE
     // =============================
 
     val maxConcurrentJobs = 4
     val acquireTimeoutMillis = 0L
 
-    // ✅ CONTROLE DE CONCORRÊNCIA
     val concurrencyController = SemaphoreConcurrencyController(maxConcurrentJobs)
 
-    // ✅ COROUTINE SCOPE GERENCIADO
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     val ingestYoutubeUseCase = IngestYoutubeUseCase(
         videoIngestionAdapter,
-        jobStatusStore,
+        transcriptionAdapter,
+        summarizationAdapter,
+        jobRepository, // ✅ CORRETO
         ingestionMetrics,
         concurrencyController,
-        acquireTimeoutMillis, // ✅ FIX: timeout configurado
-        applicationScope      // ✅ FIX: posição correta
+        acquireTimeoutMillis,
+        applicationScope
     )
 
     // =============================
-    // SCHEDULER
+    // SCHEDULER (TTL CLEANUP)
     // =============================
 
     val scheduler: ScheduledExecutorService =
@@ -150,7 +144,7 @@ fun Application.module() {
     scheduler.scheduleAtFixedRate(
         {
             try {
-                jobStatusStore.cleanup()
+                jobRepository.cleanup()
             } catch (ex: Exception) {
                 log.error("Error during job cleanup", ex)
             }
@@ -164,8 +158,6 @@ fun Application.module() {
         log.info("Shutting down job cleanup scheduler...")
 
         scheduler.shutdown()
-
-        // ✅ FINALIZA COROUTINES
         applicationScope.cancel()
 
         try {
@@ -191,7 +183,10 @@ fun Application.module() {
     )
 }
 
-// 🔧 LOGGING
+// =============================
+// LOGGING
+// =============================
+
 fun Application.configureLogging() {
     install(CallLogging) {
         level = Level.INFO
@@ -212,7 +207,10 @@ fun Application.configureLogging() {
     }
 }
 
-// 🔧 SERIALIZAÇÃO
+// =============================
+// SERIALIZAÇÃO
+// =============================
+
 fun Application.configureSerialization() {
     install(ContentNegotiation) {
         json(
@@ -225,7 +223,10 @@ fun Application.configureSerialization() {
     }
 }
 
-// 🌐 ROUTING
+// =============================
+// ROUTING
+// =============================
+
 fun Application.configureRouting(
     processTextUseCase: ProcessTextUseCase,
     exportTextUseCase: ExportTextUseCase,
