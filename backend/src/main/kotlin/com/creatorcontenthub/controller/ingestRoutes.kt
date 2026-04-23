@@ -81,7 +81,10 @@ fun Route.ingestRoutes(
             startedAt = state.startedAt,
             finishedAt = state.finishedAt,
             errorType = state.errorType?.name,
-            errorMessage = state.errorMessage
+            errorMessage = state.errorMessage,
+
+            // 🔥 NOVO CAMPO
+            transcription = state.transcription
         )
 
         call.respondSuccess(response)
