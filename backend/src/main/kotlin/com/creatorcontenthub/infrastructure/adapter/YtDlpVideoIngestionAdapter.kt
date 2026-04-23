@@ -1,142 +1,85 @@
 package com.creatorcontenthub.infrastructure.adapter
 
 import com.creatorcontenthub.application.port.VideoIngestionPort
-import com.creatorcontenthub.domain.model.ErrorType
-import com.creatorcontenthub.infrastructure.metrics.IngestionEvent
-import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
-import com.creatorcontenthub.infrastructure.metrics.IngestionWindowMetrics
-import com.creatorcontenthub.infrastructure.store.InMemoryJobStatusStore
+import com.creatorcontenthub.domain.exception.DownloadTimeoutException
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
-import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 
-class YtDlpVideoIngestionAdapter(
-    private val executor: ExecutorService,
-    private val jobStateStore: InMemoryJobStatusStore,
-    private val metrics: IngestionMetrics,
-    private val ingestionWindowMetrics: IngestionWindowMetrics
-) : VideoIngestionPort {
+class YtDlpVideoIngestionAdapter : VideoIngestionPort {
 
     companion object {
         private const val MAX_OUTPUT_LINES = 200
+        private const val TIMEOUT_MINUTES = 10L
     }
 
-    override fun ingest(url: String, jobId: String) {
+    override fun ingest(url: String, jobId: String): String {
 
-        executor.submit {
+        val outputDir = File("/tmp/creator-content-hub")
 
-            val startTime = System.currentTimeMillis()
-            var success = false
+        if (!outputDir.exists() && !outputDir.mkdirs()) {
+            throw RuntimeException("Failed to create output directory")
+        }
 
-            try {
+        val outputPath = "${outputDir.absolutePath}/$jobId.mp3"
 
-                val outputDir = File("/tmp/creator-content-hub")
-                if (!outputDir.exists()) {
-                    outputDir.mkdirs()
-                }
+        val process = ProcessBuilder(
+            "yt-dlp",
+            "-x",
+            "--audio-format", "mp3",
+            "-o", outputPath,
+            url
+        )
+            .redirectErrorStream(true)
+            .start()
 
-                val outputPath = "${outputDir.absolutePath}/$jobId.mp3"
+        println("yt-dlp download started (jobId=$jobId)")
 
-                val processBuilder = ProcessBuilder(
-                    "yt-dlp",
-                    "-x",
-                    "--audio-format", "mp3",
-                    "-o", outputPath,
-                    url
-                )
+        val outputLines = mutableListOf<String>()
 
-                processBuilder.redirectErrorStream(true)
+        // 🔥 leitura em thread separada (evita deadlock)
+        val readerThread = Thread {
+            BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
+                var line: String?
+                var count = 0
 
-                println("yt-dlp download started (jobId=$jobId)")
-
-                val process = processBuilder.start()
-
-                // ✅ leitura segura (limitada)
-                val outputLines = mutableListOf<String>()
-                BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
-                    var line: String?
-                    var count = 0
-
-                    while (reader.readLine().also { line = it } != null) {
-                        if (count < MAX_OUTPUT_LINES) {
-                            outputLines.add(line!!)
-                        }
-                        count++
+                while (reader.readLine().also { line = it } != null) {
+                    if (count < MAX_OUTPUT_LINES) {
+                        outputLines.add(line!!)
                     }
+                    count++
                 }
-
-                val finished = process.waitFor(10, TimeUnit.MINUTES)
-
-                // 🔴 TIMEOUT
-                if (!finished) {
-                    process.destroyForcibly()
-
-                    jobStateStore.markFailed(
-                        jobId,
-                        ErrorType.TIMEOUT,
-                        "Process timed out"
-                    )
-
-                    metrics.incrementFailed(ErrorType.TIMEOUT)
-
-                    return@submit
-                }
-
-                val exitCode = process.exitValue()
-
-                // 🔴 PROCESS ERROR
-                if (exitCode != 0) {
-
-                    val sanitized = outputLines.joinToString("\n").take(300)
-
-                    jobStateStore.markFailed(
-                        jobId,
-                        ErrorType.PROCESS_ERROR,
-                        "yt-dlp exited with code $exitCode: $sanitized"
-                    )
-
-                    metrics.incrementFailed(ErrorType.PROCESS_ERROR)
-
-                    return@submit
-                }
-
-                // 🟢 SUCCESS
-                println("yt-dlp download completed (jobId=$jobId)")
-
-                jobStateStore.markDone(jobId)
-
-                success = true
-
-            } catch (ex: Exception) {
-
-                val message = ex.message?.take(300) ?: "Unexpected error"
-
-                println("yt-dlp failed (jobId=$jobId, error=$message)")
-
-                jobStateStore.markFailed(
-                    jobId,
-                    ErrorType.UNKNOWN,
-                    message
-                )
-
-                metrics.incrementFailed(ErrorType.UNKNOWN)
-
-            } finally {
-
-                val endTime = System.currentTimeMillis()
-                val duration = endTime - startTime
-
-                val event = IngestionEvent(
-                    timestamp = endTime,
-                    success = success,
-                    processingTimeMs = duration
-                )
-
-                ingestionWindowMetrics.record(event)
-                metrics.addProcessingTime(duration)
             }
         }
+
+        readerThread.start()
+
+        val finished = process.waitFor(TIMEOUT_MINUTES, TimeUnit.MINUTES)
+
+        if (!finished) {
+            process.destroyForcibly()
+            readerThread.join()
+            throw DownloadTimeoutException("yt-dlp timeout after $TIMEOUT_MINUTES minutes")
+        }
+
+        readerThread.join()
+
+        val exitCode = process.exitValue()
+
+        if (exitCode != 0) {
+            val sanitized = outputLines.joinToString("\n").take(300)
+            throw RuntimeException("yt-dlp failed (code=$exitCode): $sanitized")
+        }
+
+        val outputFile = File(outputPath)
+
+        if (!outputFile.exists()) {
+            throw RuntimeException("Audio file not generated at $outputPath")
+        }
+
+        println("yt-dlp download completed (jobId=$jobId)")
+
+        return outputPath
     }
 }

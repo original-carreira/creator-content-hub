@@ -20,19 +20,20 @@ class InMemoryJobStatusStore {
             startedAt = now,
             finishedAt = null,
             errorType = null,
-            errorMessage = null
+            errorMessage = null,
+            transcription = null
         )
     }
 
-    fun markDone(jobId: String) {
+    fun markDone(jobId: String, transcription: String) {
         store.computeIfPresent(jobId) { _, current ->
             val now = maxOf(System.currentTimeMillis(), current.startedAt)
 
             current.copy(
                 status = JobStatus.DONE,
                 finishedAt = now,
-                errorType = null,
-                errorMessage = null
+                transcription = transcription,
+                transcriptionCompletedAt = now
             )
         }
     }
@@ -49,7 +50,9 @@ class InMemoryJobStatusStore {
                 status = JobStatus.FAILED,
                 finishedAt = now,
                 errorType = errorType,
-                errorMessage = errorMessage
+                errorMessage = errorMessage,
+                transcription = null,
+                transcriptionCompletedAt = null // ✔ aqui é o lugar correto
             )
         }
     }
@@ -84,18 +87,16 @@ class InMemoryJobStatusStore {
     private fun isExpired(state: JobState): Boolean {
         val now = System.currentTimeMillis()
         val referenceTime = state.finishedAt ?: state.startedAt
-
         return now - referenceTime > TTL_MILLIS
     }
 
     fun cleanup() {
         val now = System.currentTimeMillis()
-
         val iterator = store.entries.iterator()
+
         while (iterator.hasNext()) {
             val entry = iterator.next()
             val state = entry.value
-
             val referenceTime = state.finishedAt ?: state.startedAt
 
             if (now - referenceTime > TTL_MILLIS) {

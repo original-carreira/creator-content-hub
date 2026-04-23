@@ -7,7 +7,9 @@ data class JobState(
     val finishedAt: Long? = null,
 
     val errorType: ErrorType? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val transcription: String? = null,
+    val transcriptionCompletedAt: Long? = null
 ) {
 
     init {
@@ -49,6 +51,40 @@ data class JobState(
         if (status != JobStatus.DONE && status != JobStatus.FAILED) {
             require(finishedAt == null) {
                 "Non-final states cannot contain finishedAt"
+            }
+        }
+
+        // 🔥 NOVOS — TRANSCRIÇÃO
+
+        // 🔒 INVARIANTE 7 — DONE deve ter transcrição
+        if (status == JobStatus.DONE) {
+            require(!transcription.isNullOrBlank()) {
+                "DONE state must contain transcription"
+            }
+        }
+
+        // 🔒 INVARIANTE 8 — FAILED não pode ter transcrição
+        if (status == JobStatus.FAILED) {
+            require(transcription == null) {
+                "FAILED state cannot contain transcription"
+            }
+        }
+
+        // 🔒 INVARIANTE 9 — transcriptionCompletedAt coerente
+        if (transcription != null) {
+            require(transcriptionCompletedAt != null) {
+                "transcriptionCompletedAt must be present when transcription exists"
+            }
+
+            require(transcriptionCompletedAt >= startedAt) {
+                "transcriptionCompletedAt must be >= startedAt"
+            }
+        }
+
+        // 🔒 INVARIANTE 10 — não pode existir sem transcription
+        if (transcription == null) {
+            require(transcriptionCompletedAt == null) {
+                "transcriptionCompletedAt cannot exist without transcription"
             }
         }
     }

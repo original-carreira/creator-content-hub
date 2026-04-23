@@ -3,18 +3,23 @@ package com.creatorcontenthub.application.usecase
 import com.creatorcontenthub.application.dto.IngestYoutubeRequest
 import com.creatorcontenthub.application.dto.IngestYoutubeResponse
 import com.creatorcontenthub.application.port.ConcurrencyControlPort
+import com.creatorcontenthub.application.port.TranscriptionPort
 import com.creatorcontenthub.application.port.VideoIngestionPort
 import com.creatorcontenthub.domain.exception.TooManyRequestsException
 import com.creatorcontenthub.domain.model.ErrorType
 import com.creatorcontenthub.domain.model.JobStatus
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
 import com.creatorcontenthub.infrastructure.store.InMemoryJobStatusStore
+import com.creatorcontenthub.domain.exception.TranscriptionTimeoutException
+import com.creatorcontenthub.domain.exception.DownloadTimeoutException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import java.io.File
 import java.util.UUID
 
 class IngestYoutubeUseCase(
     private val videoIngestionPort: VideoIngestionPort,
+    private val transcriptionPort: TranscriptionPort,
     private val jobStateStore: InMemoryJobStatusStore,
     private val metrics: IngestionMetrics,
     private val concurrencyControl: ConcurrencyControlPort,
@@ -28,7 +33,6 @@ class IngestYoutubeUseCase(
             "URL must not be blank"
         }
 
-        // 🔴 BACKPRESSURE (agora no UseCase)
         val acquired = concurrencyControl.tryAcquire(acquireTimeoutMillis)
 
         if (!acquired) {
@@ -39,36 +43,101 @@ class IngestYoutubeUseCase(
         val jobId = UUID.randomUUID().toString()
 
         try {
-            // estado inicial
             jobStateStore.create(jobId)
-
-            // métricas após acquire
             metrics.incrementStarted()
 
-            // execução async
             scope.launch {
+
+                val jobStart = System.currentTimeMillis()
+                var audioPath: String? = null
+
                 try {
-                    videoIngestionPort.ingest(
+                    // 🔹 DOWNLOAD
+                    val downloadStart = System.currentTimeMillis()
+
+                    audioPath = videoIngestionPort.ingest(
                         url = request.url,
                         jobId = jobId
                     )
 
-                    metrics.incrementSucceeded()
+                    val downloadDuration = System.currentTimeMillis() - downloadStart
+                    println("[media-pipeline][ingestion] jobId=$jobId duration=${downloadDuration}ms")
 
-                } catch (ex: Exception) {
+                    val audioFile = File(audioPath)
+                    if (!audioFile.exists() || audioFile.length() == 0L) {
+                        throw RuntimeException("Invalid audio file generated")
+                    }
 
-                    val message = ex.message ?: "Ingestion execution failed"
+                    // 🔹 TRANSCRIÇÃO
+                    val transcriptionStart = System.currentTimeMillis()
 
-                    jobStateStore.markFailed(
-                        jobId,
-                        ErrorType.UNKNOWN,
-                        message
+                    val transcriptionResult = transcriptionPort.transcribe(audioPath)
+
+                    val transcriptionDuration = System.currentTimeMillis() - transcriptionStart
+                    println("[media-pipeline][transcription] jobId=$jobId duration=${transcriptionDuration}ms")
+
+                    // 🔹 TRUNCATE SEMÂNTICO
+                    val MAX_CHARS = 100_000
+                    val rawText = transcriptionResult.text
+
+                    val safeText = if (rawText.length > MAX_CHARS) {
+                        val cut = rawText.take(MAX_CHARS)
+                        val lastSpace = cut.lastIndexOf(' ')
+                        if (lastSpace > 0) cut.substring(0, lastSpace) else cut
+                    } else {
+                        rawText
+                    }
+
+                    jobStateStore.markDone(
+                        jobId = jobId,
+                        transcription = safeText
                     )
 
-                    metrics.incrementFailed(ErrorType.UNKNOWN)
+                    metrics.incrementSucceeded()
 
+                } catch (t: Throwable) {
+
+                    val message = t.message ?: "Pipeline execution failed"
+
+                    val errorType = when (t) {
+                        is TranscriptionTimeoutException,
+                        is DownloadTimeoutException -> ErrorType.TIMEOUT
+                        else -> ErrorType.UNKNOWN
+                    }
+
+                    try {
+                        jobStateStore.markFailed(
+                            jobId = jobId,
+                            errorType = errorType,
+                            errorMessage = message
+                        )
+                    } catch (_: Exception) {
+                        println("[media-pipeline] markFailed failed jobId=$jobId")
+                    }
+
+                    metrics.incrementFailed(errorType)
                 } finally {
-                    // 🔴 release correto (fim real)
+
+                    // 🔹 CLEANUP GLOBAL (sempre executa)
+                    try {
+                        if (audioPath != null) {
+                            val file = File(audioPath)
+                            if (file.exists()) {
+                                file.delete()
+                            }
+                        }
+                    } catch (cleanupEx: Exception) {
+                        println("[media-pipeline] cleanup failed jobId=$jobId: ${cleanupEx.message}")
+                    }
+
+                    // 🔹 LATÊNCIA TOTAL
+                    val totalDuration = System.currentTimeMillis() - jobStart
+                    println("[media-pipeline][job] jobId=$jobId totalDuration=${totalDuration}ms")
+
+                    if (totalDuration > 5 * 60 * 1000) {
+                        println("[media-pipeline][WARN] slow job jobId=$jobId duration=${totalDuration}ms")
+                    }
+
                     concurrencyControl.release()
                 }
             }
@@ -79,7 +148,6 @@ class IngestYoutubeUseCase(
             )
 
         } catch (ex: Exception) {
-            // 🔴 proteção contra erro antes do launch
             concurrencyControl.release()
             throw ex
         }
