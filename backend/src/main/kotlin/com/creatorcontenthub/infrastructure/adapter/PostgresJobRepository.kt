@@ -2,13 +2,14 @@ package com.creatorcontenthub.infrastructure.adapter
 
 import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.domain.model.*
+import com.creatorcontenthub.infrastructure.config.DatabaseConfig
 import java.sql.DriverManager
 
 class PostgresJobRepository : JobRepository {
 
-    private val url = "jdbc:postgresql://localhost:5432/creator_db"
-    private val user = "user"
-    private val password = "password"
+    private val url = DatabaseConfig.URL
+    private val user = DatabaseConfig.USER
+    private val password = DatabaseConfig.PASSWORD
 
     override fun create(jobId: String) {
         val now = System.currentTimeMillis()

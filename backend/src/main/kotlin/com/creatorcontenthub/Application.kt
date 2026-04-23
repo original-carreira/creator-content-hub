@@ -13,7 +13,14 @@ import com.creatorcontenthub.infrastructure.http.duration
 import com.creatorcontenthub.application.usecase.ProcessTextUseCase
 import com.creatorcontenthub.application.usecase.ExportTextUseCase
 import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
-import com.creatorcontenthub.infrastructure.adapter.*
+import com.creatorcontenthub.infrastructure.adapter.YtDlpVideoIngestionAdapter
+import com.creatorcontenthub.infrastructure.adapter.WhisperTranscriptionAdapter
+import com.creatorcontenthub.infrastructure.adapter.FallbackSummarizationAdapter
+import com.creatorcontenthub.infrastructure.adapter.FallbackTextProcessorAdapter
+import com.creatorcontenthub.infrastructure.adapter.LocalTextProcessorAdapter
+import com.creatorcontenthub.infrastructure.adapter.PostgresJobRepository
+import com.creatorcontenthub.infrastructure.adapter.PythonTextProcessorAdapter
+import com.creatorcontenthub.infrastructure.adapter.TxtExporterAdapter
 import com.creatorcontenthub.infrastructure.store.InMemoryJobStatusStore
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
 import com.creatorcontenthub.infrastructure.metrics.IngestionWindowMetrics
