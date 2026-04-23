@@ -95,11 +95,11 @@ class IngestYoutubeUseCase(
 
                     metrics.incrementSucceeded()
 
-                } catch (ex: Exception) {
+                } catch (t: Throwable) {
 
-                    val message = ex.message ?: "Pipeline execution failed"
+                    val message = t.message ?: "Pipeline execution failed"
 
-                    val errorType = when (ex) {
+                    val errorType = when (t) {
                         is TranscriptionTimeoutException,
                         is DownloadTimeoutException -> ErrorType.TIMEOUT
                         else -> ErrorType.UNKNOWN
@@ -116,21 +116,6 @@ class IngestYoutubeUseCase(
                     }
 
                     metrics.incrementFailed(errorType)
-
-                } catch (t: Throwable) {
-
-                    try {
-                        jobStateStore.markFailed(
-                            jobId = jobId,
-                            errorType = ErrorType.UNKNOWN,
-                            errorMessage = "Fatal error: ${t.message}"
-                        )
-                    } catch (_: Exception) {
-                        println("[media-pipeline] markFailed fatal failed jobId=$jobId")
-                    }
-
-                    metrics.incrementFailed(ErrorType.UNKNOWN)
-
                 } finally {
 
                     // 🔹 CLEANUP GLOBAL (sempre executa)

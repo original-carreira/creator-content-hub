@@ -32,7 +32,8 @@ class InMemoryJobStatusStore {
             current.copy(
                 status = JobStatus.DONE,
                 finishedAt = now,
-                transcription = transcription
+                transcription = transcription,
+                transcriptionCompletedAt = now
             )
         }
     }
