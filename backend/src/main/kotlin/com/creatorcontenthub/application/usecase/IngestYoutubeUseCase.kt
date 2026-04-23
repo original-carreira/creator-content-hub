@@ -3,6 +3,7 @@ package com.creatorcontenthub.application.usecase
 import com.creatorcontenthub.application.dto.IngestYoutubeRequest
 import com.creatorcontenthub.application.dto.IngestYoutubeResponse
 import com.creatorcontenthub.application.port.ConcurrencyControlPort
+import com.creatorcontenthub.application.port.SummarizationPort
 import com.creatorcontenthub.application.port.TranscriptionPort
 import com.creatorcontenthub.application.port.VideoIngestionPort
 import com.creatorcontenthub.domain.exception.TooManyRequestsException
@@ -15,11 +16,13 @@ import com.creatorcontenthub.domain.exception.DownloadTimeoutException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.io.File
+import java.time.Instant
 import java.util.UUID
 
 class IngestYoutubeUseCase(
     private val videoIngestionPort: VideoIngestionPort,
     private val transcriptionPort: TranscriptionPort,
+    private val summarizationPort: SummarizationPort,
     private val jobStateStore: InMemoryJobStatusStore,
     private val metrics: IngestionMetrics,
     private val concurrencyControl: ConcurrencyControlPort,
@@ -76,7 +79,7 @@ class IngestYoutubeUseCase(
                     val transcriptionDuration = System.currentTimeMillis() - transcriptionStart
                     println("[media-pipeline][transcription] jobId=$jobId duration=${transcriptionDuration}ms")
 
-                    // 🔹 TRUNCATE SEMÂNTICO
+                    // 🔹 TRUNCATE PARA PERSISTÊNCIA
                     val MAX_CHARS = 100_000
                     val rawText = transcriptionResult.text
 
@@ -88,9 +91,24 @@ class IngestYoutubeUseCase(
                         rawText
                     }
 
+                    // 🔹 SUMMARIZATION
+                    val summarizationStart = System.currentTimeMillis()
+
+                    val summaryResult = try {
+                        summarizationPort.summarize(rawText)
+                    } catch (ex: Exception) {
+                        throw RuntimeException("Summarization failed", ex)
+                    }
+
+                    val summarizationDuration = System.currentTimeMillis() - summarizationStart
+                    println("[media-pipeline][summarization] jobId=$jobId duration=${summarizationDuration}ms")
+
+                    // 🔹 FINALIZA JOB (AGORA COM SUMMARY)
                     jobStateStore.markDone(
                         jobId = jobId,
-                        transcription = safeText
+                        transcription = safeText,
+                        summary = summaryResult.summary,
+                        summaryCompletedAt = summaryResult.generatedAt.toEpochMilli()
                     )
 
                     metrics.incrementSucceeded()
@@ -102,7 +120,7 @@ class IngestYoutubeUseCase(
                     val errorType = when (t) {
                         is TranscriptionTimeoutException,
                         is DownloadTimeoutException -> ErrorType.TIMEOUT
-                        else -> ErrorType.UNKNOWN
+                        else -> ErrorType.PROCESS_ERROR
                     }
 
                     try {
@@ -118,7 +136,7 @@ class IngestYoutubeUseCase(
                     metrics.incrementFailed(errorType)
                 } finally {
 
-                    // 🔹 CLEANUP GLOBAL (sempre executa)
+                    // 🔹 CLEANUP GLOBAL
                     try {
                         if (audioPath != null) {
                             val file = File(audioPath)

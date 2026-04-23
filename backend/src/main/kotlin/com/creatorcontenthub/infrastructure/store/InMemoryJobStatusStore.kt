@@ -21,22 +21,35 @@ class InMemoryJobStatusStore {
             finishedAt = null,
             errorType = null,
             errorMessage = null,
-            transcription = null
+            transcription = null,
+            transcriptionCompletedAt = null,
+            summary = null,
+            summaryCompletedAt = null
         )
     }
 
-    fun markDone(jobId: String, transcription: String) {
+    fun markDone(
+        jobId: String,
+        transcription: String,
+        summary: String,
+        summaryCompletedAt: Long
+    ) {
         store.computeIfPresent(jobId) { _, current ->
             val now = maxOf(System.currentTimeMillis(), current.startedAt)
+
+            val safeSummaryCompletedAt = minOf(summaryCompletedAt, now)
 
             current.copy(
                 status = JobStatus.DONE,
                 finishedAt = now,
                 transcription = transcription,
-                transcriptionCompletedAt = now
+                transcriptionCompletedAt = now,
+                summary = summary,
+                summaryCompletedAt = safeSummaryCompletedAt
             )
         }
     }
+
 
     fun markFailed(
         jobId: String,
@@ -52,7 +65,9 @@ class InMemoryJobStatusStore {
                 errorType = errorType,
                 errorMessage = errorMessage,
                 transcription = null,
-                transcriptionCompletedAt = null // ✔ aqui é o lugar correto
+                transcriptionCompletedAt = null,
+                summary = null,
+                summaryCompletedAt = null
             )
         }
     }
