@@ -13,8 +13,7 @@ fun ApplicationCall.duration(): Long {
     return this.attributes.getOrNull(DurationKey) ?: 0L
 }
 
-// 🔥 AGORA GENÉRICO (remove acoplamento com ProcessTextResponse)
-suspend fun <T> ApplicationCall.respondSuccess(data: T) {
+inline suspend fun <reified T> ApplicationCall.respondSuccess(data: T) {
     respond(
         HttpStatusCode.OK,
         ApiResponse(
@@ -24,7 +23,6 @@ suspend fun <T> ApplicationCall.respondSuccess(data: T) {
     )
 }
 
-// 🔥 ESPECIFICA <Nothing> para evitar ambiguidade de tipo
 suspend fun ApplicationCall.respondError(
     status: HttpStatusCode,
     message: String,

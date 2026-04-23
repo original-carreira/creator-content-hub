@@ -1,5 +1,8 @@
 package com.creatorcontenthub.application.dto
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class IngestStatusResponse(
     val jobId: String,
     val status: String,

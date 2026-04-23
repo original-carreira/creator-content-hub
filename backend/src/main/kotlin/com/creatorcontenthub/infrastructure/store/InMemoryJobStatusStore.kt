@@ -37,6 +37,7 @@ class InMemoryJobStatusStore {
         store.computeIfPresent(jobId) { _, current ->
             val now = maxOf(System.currentTimeMillis(), current.startedAt)
 
+            // 🔒 garantir consistência temporal
             val safeSummaryCompletedAt = minOf(summaryCompletedAt, now)
 
             current.copy(
@@ -45,11 +46,12 @@ class InMemoryJobStatusStore {
                 transcription = transcription,
                 transcriptionCompletedAt = now,
                 summary = summary,
-                summaryCompletedAt = safeSummaryCompletedAt
+                summaryCompletedAt = safeSummaryCompletedAt,
+                errorType = null,          // 🔥 limpar erro
+                errorMessage = null        // 🔥 limpar erro
             )
         }
     }
-
 
     fun markFailed(
         jobId: String,
