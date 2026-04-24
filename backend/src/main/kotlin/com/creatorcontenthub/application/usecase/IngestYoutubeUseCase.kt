@@ -48,8 +48,21 @@ class IngestYoutubeUseCase(
         try {
             val now = System.currentTimeMillis()
 
-            var currentJob = JobState.started(now)
-            jobRepository.create(jobId,currentJob)
+            var currentJob = JobState(
+                status = JobStatus.PROCESSING,
+                createdAt = now,
+                startedAt = now,
+                finishedAt = null,
+                transcription = null,
+                transcriptionCompletedAt = null,
+                summary = null,
+                summaryCompletedAt = null,
+                errorType = null,
+                errorMessage = null
+            )
+            println(">>> CREATED JOB: $jobId")
+
+            jobRepository.create(jobId, currentJob)
 
             metrics.incrementStarted()
 

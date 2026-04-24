@@ -25,6 +25,8 @@ import com.creatorcontenthub.infrastructure.store.InMemoryJobStatusStore
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
 import com.creatorcontenthub.infrastructure.metrics.IngestionWindowMetrics
 import com.creatorcontenthub.infrastructure.concurrency.SemaphoreConcurrencyController
+import com.creatorcontenthub.infrastructure.config.DataSourceFactory
+import com.zaxxer.hikari.HikariDataSource
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
@@ -36,10 +38,6 @@ import kotlinx.serialization.json.Json
 import org.slf4j.event.Level
 import org.slf4j.LoggerFactory
 import io.ktor.server.request.*
-import java.util.concurrent.Executors
-import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.TimeUnit
-
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -48,6 +46,7 @@ import kotlinx.coroutines.cancel
 private val log = LoggerFactory.getLogger("JobCleanupScheduler")
 
 fun main() {
+    io.ktor.server.netty.EngineMain.main(emptyArray())
     embeddedServer(
         Netty,
         port = 8080,
@@ -105,8 +104,17 @@ fun Application.module() {
 
     val jobStatusStore = InMemoryJobStatusStore()
 
+    println("DB CONFIG = " + environment.config.propertyOrNull("database.url")?.getString())
+
     // 🔥 ADAPTAÇÃO CORRETA (PORT)
-    val jobRepository: JobRepository = PostgresJobRepository()
+    val dataSource = DataSourceFactory.create(environment.config)
+    val jobRepository = PostgresJobRepository(dataSource)
+    // 👉 REGISTRAR HOOK DE SHUTDOWN
+    environment.monitor.subscribe(ApplicationStopping) {
+        (dataSource as? HikariDataSource)?.close()
+    }
+
+
 
     val ingestionMetrics = IngestionMetrics()
     val ingestionWindowMetrics = IngestionWindowMetrics()
@@ -154,7 +162,7 @@ fun Application.module() {
         processTextUseCase,
         exportTextUseCase,
         ingestYoutubeUseCase,
-        jobStatusStore,
+        jobRepository,
         ingestionMetrics,
         ingestionWindowMetrics
     )
@@ -208,7 +216,7 @@ fun Application.configureRouting(
     processTextUseCase: ProcessTextUseCase,
     exportTextUseCase: ExportTextUseCase,
     ingestYoutubeUseCase: IngestYoutubeUseCase,
-    jobStatusStore: InMemoryJobStatusStore,
+    jobRepository: JobRepository,
     ingestionMetrics: IngestionMetrics,
     ingestionWindowMetrics: IngestionWindowMetrics
 ) {
@@ -219,7 +227,7 @@ fun Application.configureRouting(
 
         ingestRoutes(
             ingestYoutubeUseCase,
-            jobStatusStore
+            jobRepository // ✔ usar Postgres
         )
 
         metricsRoutes(

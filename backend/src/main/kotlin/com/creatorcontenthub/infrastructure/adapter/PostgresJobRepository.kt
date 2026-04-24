@@ -4,16 +4,15 @@ import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.domain.model.ErrorType
 import com.creatorcontenthub.domain.model.JobState
 import com.creatorcontenthub.domain.model.JobStatus
-import com.creatorcontenthub.infrastructure.config.DatabaseConfig
-import java.sql.DriverManager
+import java.sql.Types
+import javax.sql.DataSource
 
-class PostgresJobRepository : JobRepository {
-
-    private val url = DatabaseConfig.URL
-    private val user = DatabaseConfig.USER
-    private val password = DatabaseConfig.PASSWORD
+class PostgresJobRepository(
+    private val dataSource: DataSource
+) : JobRepository {
 
     override fun create(jobId: String, job: JobState) {
+        println("SAVING JOB: $jobId")
         val sql = """
             INSERT INTO jobs (
                 job_id,
@@ -30,19 +29,31 @@ class PostgresJobRepository : JobRepository {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()
 
-        DriverManager.getConnection(url, user, password).use { conn ->
+        dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
                 stmt.setString(1, jobId)
                 stmt.setString(2, job.status.name)
                 stmt.setLong(3, job.createdAt)
                 stmt.setLong(4, job.startedAt)
-                stmt.setObject(5, job.finishedAt)
+
+                if (job.finishedAt != null)
+                    stmt.setLong(5, job.finishedAt)
+                else
+                    stmt.setNull(5, Types.BIGINT)
 
                 stmt.setString(6, job.transcription)
-                stmt.setObject(7, job.transcriptionCompletedAt)
+
+                if (job.transcriptionCompletedAt != null)
+                    stmt.setLong(7, job.transcriptionCompletedAt)
+                else
+                    stmt.setNull(7, Types.BIGINT)
 
                 stmt.setString(8, job.summary)
-                stmt.setObject(9, job.summaryCompletedAt)
+
+                if (job.summaryCompletedAt != null)
+                    stmt.setLong(9, job.summaryCompletedAt)
+                else
+                    stmt.setNull(9, Types.BIGINT)
 
                 stmt.setString(10, job.errorType?.name)
                 stmt.setString(11, job.errorMessage)
@@ -66,16 +77,28 @@ class PostgresJobRepository : JobRepository {
             WHERE job_id = ?
         """.trimIndent()
 
-        DriverManager.getConnection(url, user, password).use { conn ->
+        dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
                 stmt.setString(1, job.status.name)
-                stmt.setObject(2, job.finishedAt)
+
+                if (job.finishedAt != null)
+                    stmt.setLong(2, job.finishedAt)
+                else
+                    stmt.setNull(2, Types.BIGINT)
 
                 stmt.setString(3, job.transcription)
-                stmt.setObject(4, job.transcriptionCompletedAt)
+
+                if (job.transcriptionCompletedAt != null)
+                    stmt.setLong(4, job.transcriptionCompletedAt)
+                else
+                    stmt.setNull(4, Types.BIGINT)
 
                 stmt.setString(5, job.summary)
-                stmt.setObject(6, job.summaryCompletedAt)
+
+                if (job.summaryCompletedAt != null)
+                    stmt.setLong(6, job.summaryCompletedAt)
+                else
+                    stmt.setNull(6, Types.BIGINT)
 
                 stmt.setString(7, job.errorType?.name)
                 stmt.setString(8, job.errorMessage)
@@ -88,38 +111,45 @@ class PostgresJobRepository : JobRepository {
     }
 
     override fun findById(jobId: String): JobState? {
+        println("FINDING JOB: $jobId")
         val sql = "SELECT * FROM jobs WHERE job_id = ?"
 
-        DriverManager.getConnection(url, user, password).use { conn ->
+        dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
                 stmt.setString(1, jobId)
 
-                val rs = stmt.executeQuery()
+                stmt.executeQuery().use { rs ->
+                    if (!rs.next()) return null
 
-                if (!rs.next()) return null
+                    return JobState(
+                        status = runCatching {
+                            JobStatus.valueOf(rs.getString("status"))
+                        }.getOrElse {
+                            JobStatus.FAILED
+                        },
+                        createdAt = rs.getLong("created_at"),
+                        startedAt = rs.getLong("started_at"),
+                        finishedAt = rs.getLongOrNull("finished_at"),
 
-                return JobState(
-                    status = runCatching {
-                        JobStatus.valueOf(rs.getString("status"))
-                    }.getOrElse {
-                        JobStatus.FAILED
-                    },
-                    createdAt = rs.getLong("created_at"),
-                    startedAt = rs.getLong("started_at"),
-                    finishedAt = (rs.getObject("finished_at") as? Number)?.toLong(),
+                        transcription = rs.getString("transcription"),
+                        transcriptionCompletedAt = rs.getLongOrNull("transcription_completed_at"),
 
-                    transcription = rs.getString("transcription"),
-                    transcriptionCompletedAt = (rs.getObject("transcription_completed_at") as? Number)?.toLong(),
+                        summary = rs.getString("summary"),
+                        summaryCompletedAt = rs.getLongOrNull("summary_completed_at"),
 
-                    summary = rs.getString("summary"),
-                    summaryCompletedAt = (rs.getObject("summary_completed_at") as? Number)?.toLong(),
-
-                    errorType = rs.getString("error_type")?.let {
-                        runCatching { ErrorType.valueOf(it) }.getOrNull()
-                    },
-                    errorMessage = rs.getString("error_message")
-                )
+                        errorType = rs.getString("error_type")?.let {
+                            runCatching { ErrorType.valueOf(it) }.getOrNull()
+                        },
+                        errorMessage = rs.getString("error_message")
+                    )
+                }
             }
         }
+    }
+
+    // Helper seguro para BIGINT nullable
+    private fun java.sql.ResultSet.getLongOrNull(column: String): Long? {
+        val value = this.getLong(column)
+        return if (this.wasNull()) null else value
     }
 }
