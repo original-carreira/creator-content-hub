@@ -141,39 +141,9 @@ fun Application.module() {
     // SCHEDULER (TTL CLEANUP)
     // =============================
 
-    val scheduler: ScheduledExecutorService =
-        Executors.newSingleThreadScheduledExecutor { runnable ->
-            Thread(runnable, "job-cleanup-scheduler").apply {
-                isDaemon = true
-            }
-        }
-
-    scheduler.scheduleAtFixedRate(
-        {
-            try {
-                jobRepository.cleanup()
-            } catch (ex: Exception) {
-                log.error("Error during job cleanup", ex)
-            }
-        },
-        1,
-        1,
-        TimeUnit.MINUTES
-    )
-
     environment.monitor.subscribe(ApplicationStopped) {
-        log.info("Shutting down job cleanup scheduler...")
-
-        scheduler.shutdown()
+        log.info("Shutting down application scope...")
         applicationScope.cancel()
-
-        try {
-            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                scheduler.shutdownNow()
-            }
-        } catch (ex: InterruptedException) {
-            scheduler.shutdownNow()
-        }
     }
 
     // =============================

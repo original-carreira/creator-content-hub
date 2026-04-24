@@ -13,6 +13,7 @@ import com.creatorcontenthub.domain.model.JobStatus
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
 import com.creatorcontenthub.domain.exception.TranscriptionTimeoutException
 import com.creatorcontenthub.domain.exception.DownloadTimeoutException
+import com.creatorcontenthub.domain.model.JobState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.io.File
@@ -45,7 +46,11 @@ class IngestYoutubeUseCase(
         val jobId = UUID.randomUUID().toString()
 
         try {
-            jobRepository.create(jobId)
+            val now = System.currentTimeMillis()
+
+            var currentJob = JobState.started(now)
+            jobRepository.create(jobId,currentJob)
+
             metrics.incrementStarted()
 
             scope.launch {
@@ -78,7 +83,7 @@ class IngestYoutubeUseCase(
                     val transcriptionDuration = System.currentTimeMillis() - transcriptionStart
                     println("[media-pipeline][transcription] jobId=$jobId duration=${transcriptionDuration}ms")
 
-                    // 🔹 TRUNCATE PARA PERSISTÊNCIA
+                    // 🔹 TRUNCATE
                     val MAX_CHARS = 100_000
                     val rawText = transcriptionResult.text
 
@@ -102,13 +107,16 @@ class IngestYoutubeUseCase(
                     val summarizationDuration = System.currentTimeMillis() - summarizationStart
                     println("[media-pipeline][summarization] jobId=$jobId duration=${summarizationDuration}ms")
 
-                    // 🔹 FINALIZA JOB (AGORA COM SUMMARY)
-                    jobRepository.markDone(
-                        jobId = jobId,
+                    // 🔹 DONE
+                    val finishedAt = System.currentTimeMillis()
+
+                    currentJob = currentJob.markDone(
                         transcription = safeText,
                         summary = summaryResult.summary,
-                        summaryCompletedAt = summaryResult.generatedAt.toEpochMilli()
+                        finishedAt = finishedAt
                     )
+
+                    jobRepository.update(jobId, currentJob)
 
                     metrics.incrementSucceeded()
 
@@ -123,19 +131,23 @@ class IngestYoutubeUseCase(
                     }
 
                     try {
-                        jobRepository.markFailed(
-                            jobId = jobId,
+                        currentJob = currentJob.markFailed(
                             errorType = errorType,
-                            errorMessage = message
+                            errorMessage = message,
+                            finishedAt = System.currentTimeMillis()
                         )
+
+                        jobRepository.update(jobId,currentJob)
+
                     } catch (_: Exception) {
                         println("[media-pipeline] markFailed failed jobId=$jobId")
                     }
 
                     metrics.incrementFailed(errorType)
+
                 } finally {
 
-                    // 🔹 CLEANUP GLOBAL
+                    // 🔹 CLEANUP
                     try {
                         if (audioPath != null) {
                             val file = File(audioPath)
@@ -147,7 +159,6 @@ class IngestYoutubeUseCase(
                         println("[media-pipeline] cleanup failed jobId=$jobId: ${cleanupEx.message}")
                     }
 
-                    // 🔹 LATÊNCIA TOTAL
                     val totalDuration = System.currentTimeMillis() - jobStart
                     println("[media-pipeline][job] jobId=$jobId totalDuration=${totalDuration}ms")
 

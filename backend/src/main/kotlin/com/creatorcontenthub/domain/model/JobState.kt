@@ -50,10 +50,14 @@ data class JobState(
             }
         }
 
-        // DONE precisa de transcription (mantido)
+        // DONE precisa de transcription
         if (status == JobStatus.DONE) {
             require(!transcription.isNullOrBlank()) {
                 "DONE state must contain transcription"
+            }
+
+            require(!summary.isNullOrBlank()) {
+                "DONE state must contain summary"
             }
         }
 
@@ -87,7 +91,7 @@ data class JobState(
             }
         }
 
-        // summary timing (mantido)
+        // summary timing
         if (summary != null) {
             val completedAt = summaryCompletedAt
 
@@ -98,6 +102,12 @@ data class JobState(
             require(completedAt >= startedAt) {
                 "summaryCompletedAt must be >= startedAt"
             }
+
+            if (finishedAt != null) {
+                require(completedAt <= finishedAt) {
+                    "summaryCompletedAt must be <= finishedAt"
+                }
+            }
         }
 
         if (summary == null) {
@@ -105,5 +115,50 @@ data class JobState(
                 "summaryCompletedAt cannot exist without summary"
             }
         }
+    }
+
+    companion object {
+
+        fun started(now: Long): JobState {
+            return JobState(
+                status = JobStatus.PROCESSING,
+                createdAt = now,
+                startedAt = now
+            )
+        }
+    }
+
+    fun markDone(
+        transcription: String,
+        summary: String,
+        finishedAt: Long
+    ): JobState {
+        return copy(
+            status = JobStatus.DONE,
+            transcription = transcription,
+            transcriptionCompletedAt = finishedAt,
+            summary = summary,
+            summaryCompletedAt = finishedAt,
+            finishedAt = finishedAt,
+            errorType = null,
+            errorMessage = null
+        )
+    }
+
+    fun markFailed(
+        errorType: ErrorType,
+        errorMessage: String,
+        finishedAt: Long
+    ): JobState {
+        return copy(
+            status = JobStatus.FAILED,
+            errorType = errorType,
+            errorMessage = errorMessage,
+            finishedAt = finishedAt,
+            transcription = null,
+            transcriptionCompletedAt = null,
+            summary = null,
+            summaryCompletedAt = null
+        )
     }
 }
