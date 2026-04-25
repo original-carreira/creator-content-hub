@@ -7,6 +7,7 @@ import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
 import com.creatorcontenthub.domain.exception.TooManyRequestsException
 import com.creatorcontenthub.infrastructure.http.respondError
 import com.creatorcontenthub.infrastructure.http.respondSuccess
+import com.creatorcontenthub.infrastructure.http.requestId
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
 import io.ktor.server.request.*
@@ -32,7 +33,12 @@ fun Route.ingestRoutes(
         }
 
         try {
-            val response = useCase.execute(request)
+            val requestId = call.requestId()
+
+            val response = useCase.execute(
+                request = request,
+                requestId = requestId
+            )
             call.respondSuccess(response)
 
         } catch (ex: TooManyRequestsException) {

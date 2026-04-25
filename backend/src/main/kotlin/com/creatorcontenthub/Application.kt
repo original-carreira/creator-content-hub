@@ -27,6 +27,7 @@ import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
 import com.creatorcontenthub.infrastructure.concurrency.SemaphoreConcurrencyController
 import com.creatorcontenthub.infrastructure.config.DataSourceFactory
 import com.creatorcontenthub.infrastructure.metrics.HikariMetrics
+import com.creatorcontenthub.infrastructure.metrics.JvmMetricsConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -58,6 +59,7 @@ fun Application.module() {
     configureLogging()
     configureSerialization()
     configureStatusPages()
+    JvmMetricsConfig.register()
 
     // =============================
     // PROCESSAMENTO TEXTO
@@ -100,11 +102,8 @@ fun Application.module() {
     // INGEST + PIPELINE
     // =============================
 
-    val jobStatusStore = InMemoryJobStatusStore()
-
     // 🔥 ADAPTAÇÃO CORRETA (PORT)
     val dataSource = DataSourceFactory.create(environment.config)
-    println("DB CONFIG = ${dataSource.jdbcUrl}")
 
     val hikariMetrics = HikariMetrics(dataSource)
 
@@ -116,8 +115,24 @@ fun Application.module() {
 
     val ingestionMetrics = IngestionMetrics()
 
-    val videoIngestionAdapter = YtDlpVideoIngestionAdapter()
-    val transcriptionAdapter = WhisperTranscriptionAdapter()
+    val ytDlpPath = environment.config
+        .propertyOrNull("ytDlp.path")
+        ?.getString()
+
+    val outputDir = System.getenv("OUTPUT_DIR")
+        ?: environment.config.propertyOrNull("app.outputDir")?.getString()
+        ?: "data"
+
+    val videoIngestionAdapter = YtDlpVideoIngestionAdapter(
+        configuredPath = ytDlpPath,
+        outputDir = outputDir
+    )
+
+    val whisperPath = environment.config
+        .propertyOrNull("whisper.path")
+        ?.getString()
+
+    val transcriptionAdapter = WhisperTranscriptionAdapter(whisperPath)
     val summarizationAdapter = FallbackSummarizationAdapter()
 
     // =============================
@@ -139,7 +154,8 @@ fun Application.module() {
         ingestionMetrics,
         concurrencyController,
         acquireTimeoutMillis,
-        applicationScope
+        applicationScope,
+        com.creatorcontenthub.infrastructure.metrics.IngestionMicrometerMetrics()
     )
 
     environment.monitor.subscribe(ApplicationStopped) {

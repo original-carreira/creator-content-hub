@@ -3,6 +3,7 @@ package com.creatorcontenthub.infrastructure.metrics
 import com.creatorcontenthub.application.dto.IngestionMetricsResponse
 import com.creatorcontenthub.application.dto.IngestionMetricsSnapshot
 import com.creatorcontenthub.domain.model.ErrorType
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 class IngestionMetrics {
@@ -19,10 +20,18 @@ class IngestionMetrics {
     // 🆕 BACKPRESSURE
     private val ingestionQueueRejections = AtomicLong(0)
 
-    // 🆕 MÉTRICAS POR ESTÁGIO
+    // 🆕 MÉTRICAS POR ESTÁGIO (tempo)
     private val downloadTimeMsTotal = AtomicLong(0)
     private val transcriptionTimeMsTotal = AtomicLong(0)
     private val summarizationTimeMsTotal = AtomicLong(0)
+
+    // 🆕 RESILIÊNCIA (NOVO - NÃO EXPÕE NO DTO)
+    private val retriesByStage = ConcurrentHashMap<String, AtomicLong>()
+    private val timeoutsByStage = ConcurrentHashMap<String, AtomicLong>()
+
+    // ========================
+    // JOB METRICS
+    // ========================
 
     fun incrementStarted() {
         jobsStarted.incrementAndGet()
@@ -38,44 +47,59 @@ class IngestionMetrics {
         when (errorType) {
             ErrorType.TIMEOUT -> timeoutFailures.incrementAndGet()
             ErrorType.PROCESS_ERROR -> processFailures.incrementAndGet()
+            ErrorType.DEPENDENCY_FAILURE -> unknownFailures.incrementAndGet()
             ErrorType.UNKNOWN -> unknownFailures.incrementAndGet()
         }
     }
 
     fun addProcessingTime(durationMs: Long) {
-        require(durationMs >= 0) {
-            "Processing time cannot be negative"
-        }
+        require(durationMs >= 0)
         totalProcessingTimeMs.addAndGet(durationMs)
     }
 
-    /**
-     * 🆕 MÉTRICAS POR ESTÁGIO (thread-safe)
-     */
+    // ========================
+    // STAGE TIMING
+    // ========================
+
     fun recordDownloadTime(durationMs: Long) {
-        require(durationMs >= 0) {
-            "Download time cannot be negative"
-        }
+        require(durationMs >= 0)
         downloadTimeMsTotal.addAndGet(durationMs)
     }
 
     fun recordTranscriptionTime(durationMs: Long) {
-        require(durationMs >= 0) {
-            "Transcription time cannot be negative"
-        }
+        require(durationMs >= 0)
         transcriptionTimeMsTotal.addAndGet(durationMs)
     }
 
     fun recordSummarizationTime(durationMs: Long) {
-        require(durationMs >= 0) {
-            "Summarization time cannot be negative"
-        }
+        require(durationMs >= 0)
         summarizationTimeMsTotal.addAndGet(durationMs)
     }
 
-    /**
-     * 🆕 PADRONIZADO (mesmo nome usado no controller)
-     */
+    // ========================
+    // RESILIENCE METRICS (NOVO)
+    // ========================
+
+    fun incrementRetry(stage: String) {
+        retriesByStage.computeIfAbsent(stage) { AtomicLong(0) }
+            .incrementAndGet()
+    }
+
+    fun incrementTimeout(stage: String) {
+        timeoutsByStage.computeIfAbsent(stage) { AtomicLong(0) }
+            .incrementAndGet()
+    }
+
+    fun getRetries(stage: String): Long =
+        retriesByStage[stage]?.get() ?: 0
+
+    fun getTimeouts(stage: String): Long =
+        timeoutsByStage[stage]?.get() ?: 0
+
+    // ========================
+    // BACKPRESSURE
+    // ========================
+
     fun incrementQueueRejections() {
         ingestionQueueRejections.incrementAndGet()
     }
@@ -83,6 +107,10 @@ class IngestionMetrics {
     fun getQueueRejections(): Long {
         return ingestionQueueRejections.get()
     }
+
+    // ========================
+    // SNAPSHOT (SEM QUEBRA)
+    // ========================
 
     fun snapshot(): IngestionMetricsResponse {
         val v2 = snapshotV2()
@@ -103,9 +131,6 @@ class IngestionMetrics {
         )
     }
 
-    /**
-     * 🟢 FONTE DE VERDADE
-     */
     fun snapshotV2(): IngestionMetricsSnapshot {
         val started = jobsStarted.get()
         val succeeded = jobsSucceeded.get()
@@ -134,10 +159,8 @@ class IngestionMetrics {
             failedProcess = processFailures.get(),
             failedUnknown = unknownFailures.get(),
 
-            // 🆕 BACKPRESSURE
             rejected = ingestionQueueRejections.get(),
 
-            // 🆕 NOVAS MÉTRICAS (SEM QUEBRAR NADA)
             downloadTimeMsTotal = downloadTimeMsTotal.get(),
             transcriptionTimeMsTotal = transcriptionTimeMsTotal.get(),
             summarizationTimeMsTotal = summarizationTimeMsTotal.get()

@@ -26,6 +26,8 @@ dependencies {
     implementation("org.slf4j:slf4j-simple:2.0.13")
     implementation("org.postgresql:postgresql:42.7.3")
 
+    implementation("io.micrometer:micrometer-registry-prometheus:1.12.5")
+
     testImplementation("io.ktor:ktor-server-tests-jvm:$ktorVersion")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlinVersion")
 }

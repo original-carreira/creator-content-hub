@@ -6,6 +6,7 @@ import com.creatorcontenthub.infrastructure.http.getRouteMetrics
 import com.creatorcontenthub.infrastructure.http.getTotalRequests
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
 import com.creatorcontenthub.infrastructure.metrics.HikariMetrics
+import com.creatorcontenthub.infrastructure.metrics.PrometheusRegistry
 import io.ktor.server.application.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -17,13 +18,13 @@ fun Route.metricsRoutes(
 
     route("/metrics") {
 
+        // 🔹 MÉTRICAS EXISTENTES (mantidas)
         get {
 
             val totalRequests = getTotalRequests()
             val routes = getRouteMetrics()
             val pythonMetrics = getPythonMetrics()
 
-            // ✅ correto
             val ingestion = ingestionMetrics.snapshot()
             val ingestionWindow = ingestionMetrics.snapshotV2()
 
@@ -47,6 +48,14 @@ fun Route.metricsRoutes(
             )
 
             call.respond(response)
+        }
+
+        // 🔥 NOVO — PROMETHEUS ENDPOINT
+        get("/prometheus") {
+            call.respondText(
+                PrometheusRegistry.registry.scrape(),
+                contentType = io.ktor.http.ContentType.parse("text/plain; version=0.0.4")
+            )
         }
     }
 }

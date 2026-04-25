@@ -1,5 +1,6 @@
 package com.creatorcontenthub.infrastructure.config
 
+import com.creatorcontenthub.infrastructure.metrics.PrometheusRegistry
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.server.config.ApplicationConfig
@@ -34,6 +35,8 @@ object DataSourceFactory {
             maxLifetime = 1800000
 
             isAutoCommit = true
+
+            metricRegistry = PrometheusRegistry.registry
 
             validate()
         }

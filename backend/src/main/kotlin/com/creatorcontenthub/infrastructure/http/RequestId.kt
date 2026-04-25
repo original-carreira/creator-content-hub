@@ -6,4 +6,7 @@ import io.ktor.util.*
 val RequestIdKey = AttributeKey<String>("RequestId")
 
 fun ApplicationCall.requestId(): String =
-    attributes.getOrNull(RequestIdKey) ?: "unknown"
+    attributes[RequestIdKey]
+
+fun ApplicationCall.requestIdOrNull(): String? =
+    attributes.getOrNull(RequestIdKey)
