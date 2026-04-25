@@ -1,165 +1,153 @@
 package com.creatorcontenthub.infrastructure.adapter
 
 import com.creatorcontenthub.application.port.JobRepository
-import com.creatorcontenthub.domain.model.*
-import com.creatorcontenthub.infrastructure.config.DatabaseConfig
-import java.sql.DriverManager
+import com.creatorcontenthub.domain.model.ErrorType
+import com.creatorcontenthub.domain.model.JobState
+import com.creatorcontenthub.domain.model.JobStatus
+import java.sql.Types
+import javax.sql.DataSource
 
-class PostgresJobRepository : JobRepository {
+class PostgresJobRepository(
+    private val dataSource: DataSource
+) : JobRepository {
 
-    private val url = DatabaseConfig.URL
-    private val user = DatabaseConfig.USER
-    private val password = DatabaseConfig.PASSWORD
+    override fun create(jobId: String, job: JobState) {
+        val sql = """
+            INSERT INTO jobs (
+                job_id,
+                status,
+                created_at,
+                started_at,
+                finished_at,
+                transcription,
+                transcription_completed_at,
+                summary,
+                summary_completed_at,
+                error_type,
+                error_message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """.trimIndent()
 
-    override fun create(jobId: String) {
-        val now = System.currentTimeMillis()
+        dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setString(1, jobId)
+                stmt.setString(2, job.status.name)
+                stmt.setLong(3, job.createdAt)
+                stmt.setLong(4, job.startedAt)
 
-        DriverManager.getConnection(url, user, password).use { conn ->
-            val stmt = conn.prepareStatement(
-                """
-                INSERT INTO jobs (job_id, status, created_at, started_at)
-                VALUES (?, ?, ?, ?)
-                """.trimIndent()
-            )
+                if (job.finishedAt != null)
+                    stmt.setLong(5, job.finishedAt)
+                else
+                    stmt.setNull(5, Types.BIGINT)
 
-            stmt.setString(1, jobId)
-            stmt.setString(2, JobStatus.PROCESSING.name)
-            stmt.setLong(3, now)
-            stmt.setLong(4, now)
+                stmt.setString(6, job.transcription)
 
-            stmt.executeUpdate()
+                if (job.transcriptionCompletedAt != null)
+                    stmt.setLong(7, job.transcriptionCompletedAt)
+                else
+                    stmt.setNull(7, Types.BIGINT)
+
+                stmt.setString(8, job.summary)
+
+                if (job.summaryCompletedAt != null)
+                    stmt.setLong(9, job.summaryCompletedAt)
+                else
+                    stmt.setNull(9, Types.BIGINT)
+
+                stmt.setString(10, job.errorType?.name)
+                stmt.setString(11, job.errorMessage)
+
+                stmt.executeUpdate()
+            }
         }
     }
 
-    override fun markDone(
-        jobId: String,
-        transcription: String,
-        summary: String,
-        summaryCompletedAt: Long
-    ) {
-        val now = System.currentTimeMillis()
-
-        val safeSummaryCompletedAt = minOf(summaryCompletedAt, now)
-
-        DriverManager.getConnection(url, user, password).use { conn ->
-            val stmt = conn.prepareStatement(
-                """
-            UPDATE jobs
-            SET status = ?, 
-                finished_at = ?, 
-                transcription = ?, 
-                transcription_completed_at = ?, 
-                summary = ?, 
+    override fun update(jobId: String, job: JobState) {
+        val sql = """
+            UPDATE jobs SET
+                status = ?,
+                finished_at = ?,
+                transcription = ?,
+                transcription_completed_at = ?,
+                summary = ?,
                 summary_completed_at = ?,
-                error_type = NULL,
-                error_message = NULL
+                error_type = ?,
+                error_message = ?
             WHERE job_id = ?
-            """.trimIndent()
-            )
+        """.trimIndent()
 
-            stmt.setString(1, JobStatus.DONE.name)
-            stmt.setLong(2, now)
-            stmt.setString(3, transcription)
-            stmt.setLong(4, now)
-            stmt.setString(5, summary)
-            stmt.setLong(6, safeSummaryCompletedAt)
-            stmt.setString(7, jobId)
+        dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setString(1, job.status.name)
 
-            stmt.executeUpdate()
-        }
-    }
+                if (job.finishedAt != null)
+                    stmt.setLong(2, job.finishedAt)
+                else
+                    stmt.setNull(2, Types.BIGINT)
 
-    override fun markFailed(
-        jobId: String,
-        errorType: ErrorType,
-        errorMessage: String
-    ) {
-        val now = System.currentTimeMillis()
+                stmt.setString(3, job.transcription)
 
-        DriverManager.getConnection(url, user, password).use { conn ->
-            val stmt = conn.prepareStatement(
-                """
-                UPDATE jobs
-                SET status = ?, 
-                    finished_at = ?, 
-                    error_type = ?, 
-                    error_message = ?, 
-                    transcription = NULL,
-                    transcription_completed_at = NULL,
-                    summary = NULL,
-                    summary_completed_at = NULL
-                WHERE job_id = ?
-                """.trimIndent()
-            )
+                if (job.transcriptionCompletedAt != null)
+                    stmt.setLong(4, job.transcriptionCompletedAt)
+                else
+                    stmt.setNull(4, Types.BIGINT)
 
-            stmt.setString(1, JobStatus.FAILED.name)
-            stmt.setLong(2, now)
-            stmt.setString(3, errorType.name)
-            stmt.setString(4, errorMessage)
-            stmt.setString(5, jobId)
+                stmt.setString(5, job.summary)
 
-            stmt.executeUpdate()
+                if (job.summaryCompletedAt != null)
+                    stmt.setLong(6, job.summaryCompletedAt)
+                else
+                    stmt.setNull(6, Types.BIGINT)
+
+                stmt.setString(7, job.errorType?.name)
+                stmt.setString(8, job.errorMessage)
+
+                stmt.setString(9, jobId)
+
+                stmt.executeUpdate()
+            }
         }
     }
 
     override fun findById(jobId: String): JobState? {
-        DriverManager.getConnection(url, user, password).use { conn ->
-            val stmt = conn.prepareStatement(
-                "SELECT * FROM jobs WHERE job_id = ?"
-            )
+        val sql = "SELECT * FROM jobs WHERE job_id = ?"
 
-            stmt.setString(1, jobId)
+        dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setString(1, jobId)
 
-            val rs = stmt.executeQuery()
+                stmt.executeQuery().use { rs ->
+                    if (!rs.next()) return null
 
-            if (!rs.next()) return null
+                    return JobState(
+                        status = runCatching {
+                            JobStatus.valueOf(rs.getString("status"))
+                        }.getOrElse {
+                            JobStatus.FAILED
+                        },
+                        createdAt = rs.getLong("created_at"),
+                        startedAt = rs.getLong("started_at"),
+                        finishedAt = rs.getLongOrNull("finished_at"),
 
-            return JobState(
-                runCatching { JobStatus.valueOf(rs.getString("status")) }
-                    .getOrElse { JobStatus.FAILED },
-                createdAt = rs.getLong("created_at"),
-                startedAt = rs.getLong("started_at"),
-                finishedAt = rs.getLong("finished_at").takeIf { !rs.wasNull() },
-                errorType = rs.getString("error_type")?.let {
-                    runCatching { ErrorType.valueOf(it) }.getOrNull()},
-                errorMessage = rs.getString("error_message"),
-                transcription = rs.getString("transcription"),
-                transcriptionCompletedAt = rs.getLong("transcription_completed_at")
-                    .takeIf { !rs.wasNull() },
-                summary = rs.getString("summary"),
-                summaryCompletedAt = rs.getLong("summary_completed_at")
-                    .takeIf { !rs.wasNull() }
-            )
+                        transcription = rs.getString("transcription"),
+                        transcriptionCompletedAt = rs.getLongOrNull("transcription_completed_at"),
+
+                        summary = rs.getString("summary"),
+                        summaryCompletedAt = rs.getLongOrNull("summary_completed_at"),
+
+                        errorType = rs.getString("error_type")?.let {
+                            runCatching { ErrorType.valueOf(it) }.getOrNull()
+                        },
+                        errorMessage = rs.getString("error_message")
+                    )
+                }
+            }
         }
     }
 
-    override fun exists(jobId: String): Boolean {
-        DriverManager.getConnection(url, user, password).use { conn ->
-            val stmt = conn.prepareStatement(
-                "SELECT 1 FROM jobs WHERE job_id = ?"
-            )
-
-            stmt.setString(1, jobId)
-
-            val rs = stmt.executeQuery()
-            return rs.next()
-        }
-    }
-
-    override fun cleanup() {
-        val ttlMillis = 10 * 60 * 1000L
-        val now = System.currentTimeMillis()
-
-        DriverManager.getConnection(url, user, password).use { conn ->
-            val stmt = conn.prepareStatement(
-                """
-                DELETE FROM jobs
-                WHERE COALESCE(finished_at, started_at) < ?
-                """.trimIndent()
-            )
-
-            stmt.setLong(1, now - ttlMillis)
-            stmt.executeUpdate()
-        }
+    // Helper seguro para BIGINT nullable
+    private fun java.sql.ResultSet.getLongOrNull(column: String): Long? {
+        val value = this.getLong(column)
+        return if (this.wasNull()) null else value
     }
 }

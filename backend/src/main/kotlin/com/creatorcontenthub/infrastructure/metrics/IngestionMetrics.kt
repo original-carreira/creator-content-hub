@@ -19,6 +19,11 @@ class IngestionMetrics {
     // 🆕 BACKPRESSURE
     private val ingestionQueueRejections = AtomicLong(0)
 
+    // 🆕 MÉTRICAS POR ESTÁGIO
+    private val downloadTimeMsTotal = AtomicLong(0)
+    private val transcriptionTimeMsTotal = AtomicLong(0)
+    private val summarizationTimeMsTotal = AtomicLong(0)
+
     fun incrementStarted() {
         jobsStarted.incrementAndGet()
     }
@@ -42,6 +47,30 @@ class IngestionMetrics {
             "Processing time cannot be negative"
         }
         totalProcessingTimeMs.addAndGet(durationMs)
+    }
+
+    /**
+     * 🆕 MÉTRICAS POR ESTÁGIO (thread-safe)
+     */
+    fun recordDownloadTime(durationMs: Long) {
+        require(durationMs >= 0) {
+            "Download time cannot be negative"
+        }
+        downloadTimeMsTotal.addAndGet(durationMs)
+    }
+
+    fun recordTranscriptionTime(durationMs: Long) {
+        require(durationMs >= 0) {
+            "Transcription time cannot be negative"
+        }
+        transcriptionTimeMsTotal.addAndGet(durationMs)
+    }
+
+    fun recordSummarizationTime(durationMs: Long) {
+        require(durationMs >= 0) {
+            "Summarization time cannot be negative"
+        }
+        summarizationTimeMsTotal.addAndGet(durationMs)
     }
 
     /**
@@ -105,8 +134,13 @@ class IngestionMetrics {
             failedProcess = processFailures.get(),
             failedUnknown = unknownFailures.get(),
 
-            // 🆕 CRÍTICO
-            rejected = ingestionQueueRejections.get()
+            // 🆕 BACKPRESSURE
+            rejected = ingestionQueueRejections.get(),
+
+            // 🆕 NOVAS MÉTRICAS (SEM QUEBRAR NADA)
+            downloadTimeMsTotal = downloadTimeMsTotal.get(),
+            transcriptionTimeMsTotal = transcriptionTimeMsTotal.get(),
+            summarizationTimeMsTotal = summarizationTimeMsTotal.get()
         )
     }
 }

@@ -12,23 +12,32 @@ class YtDlpVideoIngestionAdapter : VideoIngestionPort {
     companion object {
         private const val MAX_OUTPUT_LINES = 200
         private const val TIMEOUT_MINUTES = 10L
+        private const val OUTPUT_DIR = "/data"
     }
 
     override fun ingest(url: String, jobId: String): String {
 
-        val outputDir = File("/tmp/creator-content-hub")
+        val outputDir = File(OUTPUT_DIR)
 
         if (!outputDir.exists() && !outputDir.mkdirs()) {
-            throw RuntimeException("Failed to create output directory")
+            throw RuntimeException("Failed to create output directory: $OUTPUT_DIR")
         }
 
-        val outputPath = "${outputDir.absolutePath}/$jobId.mp3"
+        // 🔥 usa ID (estável) e diretório com permissão
+        val outputPathTemplate = "$OUTPUT_DIR/$jobId.%(ext)s"
 
         val process = ProcessBuilder(
             "yt-dlp",
             "-x",
             "--audio-format", "mp3",
-            "-o", outputPath,
+
+            // 🔥 melhora compatibilidade com YouTube
+            "--extractor-args", "youtube:player_client=android",
+
+            // 🔥 evita problemas com nome de arquivo
+            "--restrict-filenames",
+
+            "-o", outputPathTemplate,
             url
         )
             .redirectErrorStream(true)
@@ -38,7 +47,7 @@ class YtDlpVideoIngestionAdapter : VideoIngestionPort {
 
         val outputLines = mutableListOf<String>()
 
-        // 🔥 leitura em thread separada (evita deadlock)
+        // leitura em thread separada (evita deadlock)
         val readerThread = Thread {
             BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
                 var line: String?
@@ -68,18 +77,19 @@ class YtDlpVideoIngestionAdapter : VideoIngestionPort {
         val exitCode = process.exitValue()
 
         if (exitCode != 0) {
-            val sanitized = outputLines.joinToString("\n").take(300)
+            val sanitized = outputLines.joinToString("\n").take(500)
             throw RuntimeException("yt-dlp failed (code=$exitCode): $sanitized")
         }
 
-        val outputFile = File(outputPath)
+        // 🔥 yt-dlp gera .mp3 após conversão
+        val outputFile = File("$OUTPUT_DIR/$jobId.mp3")
 
         if (!outputFile.exists()) {
-            throw RuntimeException("Audio file not generated at $outputPath")
+            throw RuntimeException("Audio file not generated at ${outputFile.absolutePath}")
         }
 
         println("yt-dlp download completed (jobId=$jobId)")
 
-        return outputPath
+        return outputFile.absolutePath
     }
 }

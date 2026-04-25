@@ -1,26 +1,44 @@
 version: '3.8'
 
 services:
-  # Banco de Dados PostgreSQL
+
+  backend:
+    build: ./backend
+    container_name: creator-hub-backend
+
+    ports:
+      - "8080:8080"
+
+    environment:
+      DB_URL: jdbc:postgresql://postgres-db:5432/creator_db
+      DB_USER: user
+      DB_PASSWORD: password
+
+    depends_on:
+      - postgres-db
+
   postgres-db:
     image: postgres:15-alpine
     container_name: creator-hub-db
+
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
       POSTGRES_DB: creator_db
+
     ports:
       - "5432:5432"
+
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # Ferramenta Visual para ver o Banco (Acesse http://localhost:8081)
   adminer:
     image: adminer
     container_name: creator-hub-adminer
     restart: always
+
     ports:
-      - "8081:8080"
+      - "8085:8080"
 
 volumes:
   postgres_data:

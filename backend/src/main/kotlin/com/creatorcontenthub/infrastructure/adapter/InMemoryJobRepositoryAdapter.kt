@@ -1,31 +1,22 @@
 package com.creatorcontenthub.infrastructure.adapter
 
 import com.creatorcontenthub.application.port.JobRepository
-import com.creatorcontenthub.domain.model.ErrorType
-import com.creatorcontenthub.infrastructure.store.InMemoryJobStatusStore
+import com.creatorcontenthub.domain.model.JobState
+import java.util.concurrent.ConcurrentHashMap
 
-class InMemoryJobRepositoryAdapter(
-    private val store: InMemoryJobStatusStore
-) : JobRepository {
+class InMemoryJobRepository : JobRepository {
 
-    override fun create(jobId: String) = store.create(jobId)
+    private val store = ConcurrentHashMap<String, JobState>()
 
-    override fun markDone(
-        jobId: String,
-        transcription: String,
-        summary: String,
-        summaryCompletedAt: Long
-    ) = store.markDone(jobId, transcription, summary, summaryCompletedAt)
+    override fun create(jobId: String, job: JobState) {
+        store[jobId] = job
+    }
 
-    override fun markFailed(
-        jobId: String,
-        errorType: ErrorType,
-        errorMessage: String
-    ) = store.markFailed(jobId, errorType, errorMessage)
+    override fun update(jobId: String, job: JobState) {
+        store[jobId] = job
+    }
 
-    override fun findById(jobId: String) = store.get(jobId)
-
-    override fun exists(jobId: String) = store.exists(jobId)
-
-    override fun cleanup() = store.cleanup()
+    override fun findById(jobId: String): JobState? {
+        return store[jobId]
+    }
 }

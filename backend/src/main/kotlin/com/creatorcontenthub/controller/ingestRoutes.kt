@@ -2,11 +2,11 @@ package com.creatorcontenthub.controller
 
 import com.creatorcontenthub.application.dto.IngestStatusResponse
 import com.creatorcontenthub.application.dto.IngestYoutubeRequest
+import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
 import com.creatorcontenthub.domain.exception.TooManyRequestsException
 import com.creatorcontenthub.infrastructure.http.respondError
 import com.creatorcontenthub.infrastructure.http.respondSuccess
-import com.creatorcontenthub.infrastructure.store.InMemoryJobStatusStore
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
 import io.ktor.server.request.*
@@ -14,7 +14,7 @@ import io.ktor.server.routing.*
 
 fun Route.ingestRoutes(
     useCase: IngestYoutubeUseCase,
-    jobStatusStore: InMemoryJobStatusStore
+    jobRepository: JobRepository
 ) {
 
     post("/ingest/youtube") {
@@ -67,7 +67,7 @@ fun Route.ingestRoutes(
             return@get
         }
 
-        val state = jobStatusStore.get(jobId)
+        val state = jobRepository.findById(jobId)
 
         if (state == null) {
             call.respondError(HttpStatusCode.NotFound, "Job not found")
