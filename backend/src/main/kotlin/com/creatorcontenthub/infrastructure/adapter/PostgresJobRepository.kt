@@ -12,7 +12,6 @@ class PostgresJobRepository(
 ) : JobRepository {
 
     override fun create(jobId: String, job: JobState) {
-        println("SAVING JOB: $jobId")
         val sql = """
             INSERT INTO jobs (
                 job_id,
@@ -111,7 +110,6 @@ class PostgresJobRepository(
     }
 
     override fun findById(jobId: String): JobState? {
-        println("FINDING JOB: $jobId")
         val sql = "SELECT * FROM jobs WHERE job_id = ?"
 
         dataSource.connection.use { conn ->

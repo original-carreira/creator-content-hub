@@ -172,7 +172,7 @@ fun Application.configureLogging() {
 
         filter { call ->
             val path = call.request.path()
-            path.startsWith("/process")
+            path.startsWith("/process") ||
             path.startsWith("/ingest") ||
             path.startsWith("/metrics") ||
             path.startsWith("/health")
