@@ -14,11 +14,13 @@ import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
 import com.creatorcontenthub.domain.exception.TranscriptionTimeoutException
 import com.creatorcontenthub.domain.exception.DownloadTimeoutException
 import com.creatorcontenthub.domain.model.JobState
+import com.creatorcontenthub.domain.model.ErrorClassifier
+import com.creatorcontenthub.infrastructure.logging.StructuredLogger
+import com.creatorcontenthub.infrastructure.metrics.IngestionMicrometerMetrics
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.UUID
-import org.slf4j.LoggerFactory
 
 class IngestYoutubeUseCase(
     private val videoIngestionPort: VideoIngestionPort,
@@ -28,12 +30,13 @@ class IngestYoutubeUseCase(
     private val metrics: IngestionMetrics,
     private val concurrencyControl: ConcurrencyControlPort,
     private val acquireTimeoutMillis: Long,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val micrometer: IngestionMicrometerMetrics
 ) {
 
-    private val logger = LoggerFactory.getLogger(IngestYoutubeUseCase::class.java)
+    private val logger = StructuredLogger.logger(javaClass)
 
-    fun execute(request: IngestYoutubeRequest): IngestYoutubeResponse {
+    fun execute(request: IngestYoutubeRequest, requestId: String): IngestYoutubeResponse {
 
         require(request.url.isNotBlank()) {
             "URL must not be blank"
@@ -64,10 +67,18 @@ class IngestYoutubeUseCase(
                 errorMessage = null
             )
 
-            logger.info("[job] jobId={} status=CREATED", jobId)
+            StructuredLogger.log(
+                logger,
+                event = "job_created",
+                jobId = jobId,
+                requestId = requestId,
+                status = "CREATED"
+            )
 
             jobRepository.create(jobId, currentJob)
+
             metrics.incrementStarted()
+            micrometer.incrementStarted()
 
             scope.launch {
 
@@ -84,25 +95,30 @@ class IngestYoutubeUseCase(
                             jobId = jobId
                         )
                     } catch (ex: Exception) {
-                        logger.error(
-                            "[download] jobId={} status=FAILED errorType={} message={}",
-                            jobId,
-                            ex::class.simpleName,
-                            ex.message
+                        StructuredLogger.log(
+                            logger,
+                            event = "download",
+                            jobId = jobId,
+                            requestId = requestId,
+                            status = "FAILED",
+                            errorType = ex::class.simpleName
                         )
                         throw ex
                     }
 
                     val downloadDuration = System.currentTimeMillis() - downloadStart
 
-                    logger.info(
-                        "[download] jobId={} status=SUCCESS duration={}ms",
-                        jobId,
-                        downloadDuration
+                    StructuredLogger.log(
+                        logger,
+                        event = "download",
+                        jobId = jobId,
+                        requestId = requestId,
+                        durationMs = downloadDuration,
+                        status = "SUCCESS"
                     )
 
-                    // ✅ MÉTRICA
                     metrics.recordDownloadTime(downloadDuration)
+                    micrometer.recordDownload(downloadDuration)
 
                     val audioFile = File(audioPath)
                     if (!audioFile.exists() || audioFile.length() == 0L) {
@@ -118,25 +134,30 @@ class IngestYoutubeUseCase(
                     val transcriptionResult = try {
                         transcriptionPort.transcribe(safeAudioPath)
                     } catch (ex: Exception) {
-                        logger.error(
-                            "[transcription] jobId={} status=FAILED errorType={} message={}",
-                            jobId,
-                            ex::class.simpleName,
-                            ex.message
+                        StructuredLogger.log(
+                            logger,
+                            event = "transcription",
+                            jobId = jobId,
+                            requestId = requestId,
+                            status = "FAILED",
+                            errorType = ex::class.simpleName
                         )
                         throw ex
                     }
 
                     val transcriptionDuration = System.currentTimeMillis() - transcriptionStart
 
-                    logger.info(
-                        "[transcription] jobId={} status=SUCCESS duration={}ms",
-                        jobId,
-                        transcriptionDuration
+                    StructuredLogger.log(
+                        logger,
+                        event = "transcription",
+                        jobId = jobId,
+                        requestId = requestId,
+                        durationMs = transcriptionDuration,
+                        status = "SUCCESS"
                     )
 
-                    // ✅ MÉTRICA
                     metrics.recordTranscriptionTime(transcriptionDuration)
+                    micrometer.recordTranscription(transcriptionDuration)
 
                     val MAX_CHARS = 100_000
                     val rawText = transcriptionResult.text
@@ -155,25 +176,30 @@ class IngestYoutubeUseCase(
                     val summaryResult = try {
                         summarizationPort.summarize(rawText)
                     } catch (ex: Exception) {
-                        logger.error(
-                            "[summarization] jobId={} status=FAILED errorType={} message={}",
-                            jobId,
-                            ex::class.simpleName,
-                            ex.message
+                        StructuredLogger.log(
+                            logger,
+                            event = "summarization",
+                            jobId = jobId,
+                            requestId = requestId,
+                            status = "FAILED",
+                            errorType = ex::class.simpleName
                         )
                         throw RuntimeException("Summarization failed", ex)
                     }
 
                     val summarizationDuration = System.currentTimeMillis() - summarizationStart
 
-                    logger.info(
-                        "[summarization] jobId={} status=SUCCESS duration={}ms",
-                        jobId,
-                        summarizationDuration
+                    StructuredLogger.log(
+                        logger,
+                        event = "summarization",
+                        jobId = jobId,
+                        requestId = requestId,
+                        durationMs = summarizationDuration,
+                        status = "SUCCESS"
                     )
 
-                    // ✅ MÉTRICA
                     metrics.recordSummarizationTime(summarizationDuration)
+                    micrometer.recordSummarization(summarizationDuration)
 
                     // ---------------- DONE ----------------
                     val finishedAt = System.currentTimeMillis()
@@ -185,23 +211,35 @@ class IngestYoutubeUseCase(
                     )
 
                     jobRepository.update(jobId, currentJob)
+
                     metrics.incrementSucceeded()
+                    micrometer.incrementSucceeded()
 
                 } catch (t: Throwable) {
 
                     val message = t.message ?: "Pipeline execution failed"
 
-                    val errorType = when (t) {
-                        is TranscriptionTimeoutException,
-                        is DownloadTimeoutException -> ErrorType.TIMEOUT
-                        else -> ErrorType.PROCESS_ERROR
+                    val errorType = ErrorClassifier.classify(throwable = t)
+
+                    // 🆕 MÉTRICA DE RETRY (resiliência)
+                    if (errorType == ErrorType.TIMEOUT || errorType == ErrorType.DEPENDENCY_FAILURE) {
+
+                        val stage = when {
+                            t is DownloadTimeoutException -> "download"
+                            t is TranscriptionTimeoutException -> "transcription"
+                            else -> "unknown"
+                        }
+
+                        metrics.incrementRetry(stage)
                     }
 
-                    logger.error(
-                        "[job] jobId={} status=FAILED errorType={} message={}",
-                        jobId,
-                        errorType,
-                        message
+                    StructuredLogger.log(
+                        logger,
+                        event = "job_failed",
+                        jobId = jobId,
+                        requestId = requestId,
+                        status = "FAILED",
+                        errorType = errorType.name
                     )
 
                     try {
@@ -214,13 +252,18 @@ class IngestYoutubeUseCase(
                         jobRepository.update(jobId, currentJob)
 
                     } catch (_: Exception) {
-                        logger.error(
-                            "[job-update] jobId={} status=FAILED message=markFailed failed",
-                            jobId
+                        StructuredLogger.log(
+                            logger,
+                            event = "job_update",
+                            jobId = jobId,
+                            requestId = requestId,
+                            status = "FAILED",
+                            errorType = "markFailed_error"
                         )
                     }
 
                     metrics.incrementFailed(errorType)
+                    micrometer.incrementFailed(errorType.name)
 
                 } finally {
 
@@ -232,29 +275,38 @@ class IngestYoutubeUseCase(
                             }
                         }
                     } catch (cleanupEx: Exception) {
-                        logger.warn(
-                            "[cleanup] jobId={} status=FAILED message={}",
-                            jobId,
-                            cleanupEx.message
+                        StructuredLogger.log(
+                            logger,
+                            event = "cleanup",
+                            jobId = jobId,
+                            requestId = requestId,
+                            status = "FAILED",
+                            errorType = cleanupEx::class.simpleName
                         )
                     }
 
                     val totalDuration = System.currentTimeMillis() - jobStart
 
                     metrics.addProcessingTime(totalDuration)
+                    micrometer.recordTotal(totalDuration)
 
-                    logger.info(
-                        "[job] jobId={} status={} totalDuration={}ms",
-                        jobId,
-                        currentJob.status,
-                        totalDuration
+                    StructuredLogger.log(
+                        logger,
+                        event = "job_complete",
+                        jobId = jobId,
+                        requestId = requestId,
+                        status = currentJob.status.name,
+                        durationMs = totalDuration
                     )
 
                     if (totalDuration > 5 * 60 * 1000) {
-                        logger.warn(
-                            "[job] jobId={} status=SLOW totalDuration={}ms",
-                            jobId,
-                            totalDuration
+                        StructuredLogger.log(
+                            logger,
+                            event = "job_slow",
+                            jobId = jobId,
+                            requestId = requestId,
+                            durationMs = totalDuration,
+                            status = "SLOW"
                         )
                     }
 

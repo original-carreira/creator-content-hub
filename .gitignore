@@ -2,8 +2,13 @@
 __pycache__/
 data/cache/
 *.pyc
-venv/
+*.pyo
 .env
+# Python virtual environments
+.venv/
+backend/.venv/
+**/.venv/
+venv/
 
 .gradle/
 build/
@@ -15,3 +20,13 @@ out/
 
 .idea/
 *.iml
+
+# mídia gerada
+*.mp3
+*.wav
+*.webm
+*.mp4
+
+# yt-dlp output
+/data/
+backend/data/
