@@ -1,5 +1,8 @@
 package com.creatorcontenthub.application.dto
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class IngestionMetricsSnapshot(
     val started: Long,
     val succeeded: Long,
@@ -14,5 +17,8 @@ data class IngestionMetricsSnapshot(
 
     val failedTimeout: Long,
     val failedProcess: Long,
-    val failedUnknown: Long
+    val failedUnknown: Long,
+    val downloadTimeMsTotal: Long,
+    val transcriptionTimeMsTotal: Long,
+    val summarizationTimeMsTotal: Long
 )

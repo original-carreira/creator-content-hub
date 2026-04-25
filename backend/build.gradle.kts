@@ -23,9 +23,7 @@ dependencies {
     implementation("io.ktor:ktor-server-call-logging-jvm:$ktorVersion")
 
     implementation("com.zaxxer:HikariCP:5.1.0")
-
     implementation("org.slf4j:slf4j-simple:2.0.13")
-
     implementation("org.postgresql:postgresql:42.7.3")
 
     testImplementation("io.ktor:ktor-server-tests-jvm:$ktorVersion")

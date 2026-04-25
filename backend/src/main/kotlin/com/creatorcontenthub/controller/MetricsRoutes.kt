@@ -1,17 +1,19 @@
 package com.creatorcontenthub.controller
 
-import com.creatorcontenthub.application.dto.MetricsResponse
-import com.creatorcontenthub.application.dto.PythonMetricsResponse
+import com.creatorcontenthub.application.dto.*
 import com.creatorcontenthub.infrastructure.http.getPythonMetrics
 import com.creatorcontenthub.infrastructure.http.getRouteMetrics
 import com.creatorcontenthub.infrastructure.http.getTotalRequests
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
-import com.creatorcontenthub.infrastructure.metrics.IngestionWindowMetrics
+import com.creatorcontenthub.infrastructure.metrics.HikariMetrics
 import io.ktor.server.application.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 
-fun Route.metricsRoutes(ingestionMetrics: IngestionMetrics, ingestionWindowMetrics: IngestionWindowMetrics) {
+fun Route.metricsRoutes(
+    ingestionMetrics: IngestionMetrics,
+    hikariMetrics: HikariMetrics
+) {
 
     route("/metrics") {
 
@@ -21,9 +23,11 @@ fun Route.metricsRoutes(ingestionMetrics: IngestionMetrics, ingestionWindowMetri
             val routes = getRouteMetrics()
             val pythonMetrics = getPythonMetrics()
 
-            // 🔥 NOVO BLOCO
-            val ingestionSnapshot = ingestionMetrics.snapshotV2()
-            val windowSnapshot = ingestionWindowMetrics.snapshot()
+            // ✅ correto
+            val ingestion = ingestionMetrics.snapshot()
+            val ingestionWindow = ingestionMetrics.snapshotV2()
+
+            val (active, idle, waiting) = hikariMetrics.snapshot()
 
             val response = MetricsResponse(
                 totalRequests = totalRequests,
@@ -33,9 +37,15 @@ fun Route.metricsRoutes(ingestionMetrics: IngestionMetrics, ingestionWindowMetri
                     errors = pythonMetrics.errors,
                     timeouts = pythonMetrics.timeouts
                 ),
-                ingestion = ingestionSnapshot,
-                ingestionWindow =  windowSnapshot
+                ingestion = ingestion,
+                ingestionWindow = ingestionWindow,
+                hikari = HikariMetricsResponse(
+                    active = active,
+                    idle = idle,
+                    waiting = waiting
+                )
             )
+
             call.respond(response)
         }
     }
