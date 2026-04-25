@@ -14,28 +14,28 @@ import java.util.concurrent.TimeUnit
 
 class YtDlpVideoIngestionAdapter(
     private val configuredPath: String? = null,
+    private val outputDir: String,
     private val timeoutConfig: IngestionTimeoutConfig = IngestionTimeoutConfig()
 ) : VideoIngestionPort {
 
     companion object {
         private const val MAX_OUTPUT_LINES = 200
-        private const val OUTPUT_DIR = "/data"
     }
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
-    override fun ingest(url: String, jobId: String): String {
+    override suspend fun ingest(url: String, jobId: String): String {
 
-        val outputDir = File(OUTPUT_DIR)
+        val outputDirFile = File(outputDir)
 
-        if (!outputDir.exists() && !outputDir.mkdirs()) {
-            throw RuntimeException("Failed to create output directory: $OUTPUT_DIR")
+        if (!outputDirFile.exists() && !outputDirFile.mkdirs()) {
+            throw RuntimeException("Failed to create output directory: $outputDir")
         }
 
-        val outputPathTemplate = "$OUTPUT_DIR/$jobId.%(ext)s"
+        val outputPathTemplate = "$outputDir/$jobId.%(ext)s"
 
         // 🧹 idempotência
-        File(OUTPUT_DIR)
+        outputDirFile
             .listFiles { _, name -> name.startsWith(jobId) }
             ?.forEach { file ->
                 if (file.exists()) {
@@ -165,7 +165,7 @@ class YtDlpVideoIngestionAdapter(
             }
         }
 
-        val outputFile = File("$OUTPUT_DIR/$jobId.mp3")
+        val outputFile = File("$outputDir/$jobId.mp3")
 
         if (!outputFile.exists()) {
             logger.error("event=download_file_missing jobId={} path={}", jobId, outputFile.absolutePath)

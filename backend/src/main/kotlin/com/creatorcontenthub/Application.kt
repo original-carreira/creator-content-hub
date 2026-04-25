@@ -104,7 +104,6 @@ fun Application.module() {
 
     // 🔥 ADAPTAÇÃO CORRETA (PORT)
     val dataSource = DataSourceFactory.create(environment.config)
-    println("DB CONFIG = ${dataSource.jdbcUrl}")
 
     val hikariMetrics = HikariMetrics(dataSource)
 
@@ -120,7 +119,14 @@ fun Application.module() {
         .propertyOrNull("ytDlp.path")
         ?.getString()
 
-    val videoIngestionAdapter = YtDlpVideoIngestionAdapter(ytDlpPath)
+    val outputDir = System.getenv("OUTPUT_DIR")
+        ?: environment.config.propertyOrNull("app.outputDir")?.getString()
+        ?: "data"
+
+    val videoIngestionAdapter = YtDlpVideoIngestionAdapter(
+        configuredPath = ytDlpPath,
+        outputDir = outputDir
+    )
 
     val whisperPath = environment.config
         .propertyOrNull("whisper.path")

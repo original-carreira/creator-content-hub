@@ -4,20 +4,20 @@ import com.creatorcontenthub.domain.model.ErrorClassifier
 import com.creatorcontenthub.domain.model.ErrorType
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
 import org.slf4j.LoggerFactory
-import kotlin.math.pow
+import kotlinx.coroutines.delay
 
 object RetryUtil {
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
-    fun <T> retry(
+    suspend fun <T> retry(
         maxAttempts: Int,
         initialDelayMs: Long,
         shouldRetry: (Throwable) -> Boolean,
         stage: String,
         jobId: String,
-        metrics: IngestionMetrics? = null, // ✅ NOVO (opcional)
-        block: () -> T
+        metrics: IngestionMetrics? = null,
+        block: suspend () -> T
     ): T {
 
         var attempt = 1
@@ -58,12 +58,7 @@ object RetryUtil {
                 // 🆕 MÉTRICA DE RETRY
                 metrics?.incrementRetry(stage)
 
-                try {
-                    Thread.sleep(finalDelay)
-                } catch (ie: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    throw ie
-                }
+                delay(finalDelay)
 
                 attempt++
             }
