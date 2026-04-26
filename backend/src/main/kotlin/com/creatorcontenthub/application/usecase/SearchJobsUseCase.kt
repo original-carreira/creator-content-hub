@@ -7,13 +7,33 @@ class SearchJobsUseCase(
     private val repository: JobSearchRepository
 ) {
 
-    fun execute(query: String, limit: Int?, offset: Int?): SearchResult {
+    fun execute(
+        query: String,
+        status: String?,
+        from: Long?,
+        to: Long?,
+        limit: Int?,
+        offset: Int?
+    ): SearchResult {
 
         val safeLimit = (limit ?: 20).coerceIn(1, 100)
         val safeOffset = (offset ?: 0).coerceAtLeast(0)
 
-        val results = repository.search(query, safeLimit, safeOffset)
-        val total = repository.count(query)
+        val results = repository.search(
+            query = query,
+            status = status,
+            from = from,
+            to = to,
+            limit = safeLimit,
+            offset = safeOffset
+        )
+
+        val total = repository.count(
+            query = query,
+            status = status,
+            from = from,
+            to = to
+        )
 
         return SearchResult(results, total)
     }
