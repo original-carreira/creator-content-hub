@@ -38,6 +38,8 @@ object DataSourceFactory {
 
             metricRegistry = PrometheusRegistry.registry
 
+            initializationFailTimeout = -1
+
             validate()
         }
 
