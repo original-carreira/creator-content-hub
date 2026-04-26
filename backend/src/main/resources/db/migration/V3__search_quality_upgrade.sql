@@ -2,7 +2,7 @@
 -- SEARCH QUALITY UPGRADE (PORTUGUESE + WEIGHTS)
 -- ============================================
 
--- 1. REINDEXAÇÃO DO SEARCH VECTOR
+-- 1. REINDEXACAO DO SEARCH VECTOR
 UPDATE jobs
 SET search_vector =
         setweight(to_tsvector('portuguese', coalesce(summary, '')), 'A') ||
@@ -14,7 +14,7 @@ DROP TRIGGER IF EXISTS jobs_search_vector_trigger ON jobs;
 DROP FUNCTION IF EXISTS jobs_search_vector_update();
 
 
--- 3. NOVA FUNÇÃO COM PESO + PORTUGUESE
+-- 3. NOVA FUNCAO COM PESO + PORTUGUESE
 CREATE FUNCTION jobs_search_vector_update() RETURNS trigger AS $$
 BEGIN
   NEW.search_vector :=
@@ -31,7 +31,7 @@ CREATE TRIGGER jobs_search_vector_trigger
                          FOR EACH ROW EXECUTE FUNCTION jobs_search_vector_update();
 
 
--- 5. RECRIAR ÍNDICE GIN (IMPORTANTE)
+-- 5. RECRIAR INDICE GIN (IMPORTANTE)
 DROP INDEX IF EXISTS idx_jobs_search_vector;
 
 CREATE INDEX idx_jobs_search_vector
