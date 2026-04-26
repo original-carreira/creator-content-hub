@@ -14,7 +14,19 @@ data class JobSearchResult(
 
 interface JobSearchRepository {
 
-    fun search(query: String, limit: Int, offset: Int): List<JobSearchResult>
+    fun search(
+        query: String,
+        status: String?,
+        from: Long?,
+        to: Long?,
+        limit: Int,
+        offset: Int
+    ): List<JobSearchResult>
 
-    fun count(query: String): Long
+    fun count(
+        query: String,
+        status: String?,
+        from: Long?,
+        to: Long?
+    ): Long
 }

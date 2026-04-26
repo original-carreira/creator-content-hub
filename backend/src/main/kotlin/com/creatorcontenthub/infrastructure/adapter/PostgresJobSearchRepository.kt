@@ -9,13 +9,21 @@ class PostgresJobSearchRepository(
     private val dataSource: DataSource
 ) : JobSearchRepository {
 
-    override fun search(query: String, limit: Int, offset: Int): List<JobSearchResult> {
+    override fun search(
+        query: String,
+        status: String?,
+        from: Long?,
+        to: Long?,
+        limit: Int,
+        offset: Int
+    ): List<JobSearchResult> {
 
         val sql = """
-        WITH query AS (
-            SELECT plainto_tsquery('portuguese', ?) AS q
-        )
-        SELECT job_id,
+            WITH query AS (
+                SELECT plainto_tsquery('portuguese', ?) AS q
+            )
+            SELECT
+                job_id,
                 status,
                 created_at,
                 COALESCE(
@@ -28,17 +36,37 @@ class PostgresJobSearchRepository(
                 ) AS snippet,
                 COALESCE(ts_rank_cd(search_vector, query.q), 0) AS rank
         FROM jobs, query
-        WHERE search_vector @@ query.q
-        AND created_at IS NOT NULL
+        WHERE
+            search_vector @@ query.q
+            AND created_at IS NOT NULL
+            AND (?::text IS NULL OR status = ?)
+            AND (?::bigint IS NULL OR created_at >= ?)
+            AND (?::bigint IS NULL OR created_at <= ?)
         ORDER BY rank DESC
         LIMIT ? OFFSET ?
     """.trimIndent()
-
         dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
-                stmt.setString(1, query)
-                stmt.setInt(2, limit)
-                stmt.setInt(3, offset)
+
+                var i = 1
+
+                stmt.setString(i++, query)
+
+                // status
+                stmt.setString(i++, status)
+                stmt.setString(i++, status)
+
+                // from
+                stmt.setObject(i++, from)
+                stmt.setObject(i++, from)
+
+                // to
+                stmt.setObject(i++, to)
+                stmt.setObject(i++, to)
+
+                // pagination
+                stmt.setInt(i++, limit)
+                stmt.setInt(i++, offset)
 
                 val rs = stmt.executeQuery()
                 val results = mutableListOf<JobSearchResult>()
@@ -56,7 +84,7 @@ class PostgresJobSearchRepository(
                         JobSearchResult(
                             jobId = rs.getString("job_id"),
                             status = rs.getString("status"),
-                            createdAt = createdAt.toString(), // ✅ CORRETO AGORA
+                            createdAt = createdAt.toString(),
                             snippet = rs.getString("snippet") ?: "",
                             rank = rs.getDouble("rank")
                         )
@@ -68,19 +96,43 @@ class PostgresJobSearchRepository(
         }
     }
 
-    override fun count(query: String): Long {
+    override fun count(
+        query: String,
+        status: String?,
+        from: Long?,
+        to: Long?
+    ): Long {
         val sql = """
             WITH query AS (
                 SELECT plainto_tsquery('portuguese', ?) AS q
             )
             SELECT COUNT(*)
             FROM jobs, query
-            WHERE search_vector @@ query.q;
-        """.trimIndent()
-
+            WHERE
+                search_vector @@ query.q
+                AND created_at IS NOT NULL
+                AND (?::text IS NULL OR status = ?)
+                AND (?::bigint IS NULL OR created_at >= ?)
+                AND (?::bigint IS NULL OR created_at <= ?)
+       """.trimIndent()
         dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
-                stmt.setString(1, query)
+
+                var i = 1
+
+                stmt.setString(i++, query)
+
+                // status
+                stmt.setString(i++, status)
+                stmt.setString(i++, status)
+
+                // from
+                stmt.setObject(i++, from)
+                stmt.setObject(i++, from)
+
+                // to
+                stmt.setObject(i++, to)
+                stmt.setObject(i++, to)
 
                 val rs = stmt.executeQuery()
                 rs.next()
