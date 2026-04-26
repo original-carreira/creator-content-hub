@@ -13,16 +13,17 @@ import com.creatorcontenthub.infrastructure.http.duration
 import com.creatorcontenthub.application.usecase.ProcessTextUseCase
 import com.creatorcontenthub.application.usecase.ExportTextUseCase
 import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
+import com.creatorcontenthub.application.usecase.ListJobsUseCase
 import com.creatorcontenthub.controller.healthDbRoute
 import com.creatorcontenthub.infrastructure.adapter.YtDlpVideoIngestionAdapter
 import com.creatorcontenthub.infrastructure.adapter.WhisperTranscriptionAdapter
 import com.creatorcontenthub.infrastructure.adapter.FallbackSummarizationAdapter
 import com.creatorcontenthub.infrastructure.adapter.FallbackTextProcessorAdapter
 import com.creatorcontenthub.infrastructure.adapter.LocalTextProcessorAdapter
+import com.creatorcontenthub.infrastructure.adapter.PostgresJobQueryRepository
 import com.creatorcontenthub.infrastructure.adapter.PostgresJobRepository
 import com.creatorcontenthub.infrastructure.adapter.PythonTextProcessorAdapter
 import com.creatorcontenthub.infrastructure.adapter.TxtExporterAdapter
-import com.creatorcontenthub.infrastructure.store.InMemoryJobStatusStore
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
 import com.creatorcontenthub.infrastructure.concurrency.SemaphoreConcurrencyController
 import com.creatorcontenthub.infrastructure.config.DataSourceFactory
@@ -31,9 +32,7 @@ import com.creatorcontenthub.infrastructure.metrics.JvmMetricsConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
-import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.EngineMain
-import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.callloging.*
 import io.ktor.server.routing.*
@@ -108,10 +107,12 @@ fun Application.module() {
     val hikariMetrics = HikariMetrics(dataSource)
 
     val jobRepository = PostgresJobRepository(dataSource)
-    // 👉 REGISTRAR HOOK DE SHUTDOWN
     environment.monitor.subscribe(ApplicationStopping) {
         (dataSource as? HikariDataSource)?.close()
     }
+
+    val jobQueryRepository = PostgresJobQueryRepository(dataSource)
+    val listJobsUseCase = ListJobsUseCase(jobQueryRepository)
 
     val ingestionMetrics = IngestionMetrics()
 
@@ -174,7 +175,8 @@ fun Application.module() {
         jobRepository,
         ingestionMetrics,
         hikariMetrics,
-        dataSource
+        dataSource,
+        listJobsUseCase
     )
 }
 
@@ -233,7 +235,8 @@ fun Application.configureRouting(
     jobRepository: JobRepository,
     ingestionMetrics: IngestionMetrics,
     hikariMetrics: HikariMetrics,
-    dataSource: HikariDataSource
+    dataSource: HikariDataSource,
+    listJobsUseCase: ListJobsUseCase,
 ) {
     routing {
         healthRoutes()
@@ -243,7 +246,8 @@ fun Application.configureRouting(
 
         ingestRoutes(
             ingestYoutubeUseCase,
-            jobRepository // ✔ usar Postgres
+            jobRepository,
+            listJobsUseCase
         )
 
         metricsRoutes(
