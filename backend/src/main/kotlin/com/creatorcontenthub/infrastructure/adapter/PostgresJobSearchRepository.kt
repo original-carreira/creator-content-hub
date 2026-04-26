@@ -38,12 +38,7 @@ class PostgresJobSearchRepository(
 
                     val createdAt = try {
                         val epoch = rs.getLong("created_at")
-
-                        when {
-                            epoch > 1_000_000_000_000 -> Instant.ofEpochMilli(epoch)
-                            epoch > 0 -> Instant.EPOCH
-                            else -> Instant.EPOCH
-                        }
+                        Instant.ofEpochMilli(epoch)
                     } catch (e: Exception) {
                         Instant.EPOCH
                     }

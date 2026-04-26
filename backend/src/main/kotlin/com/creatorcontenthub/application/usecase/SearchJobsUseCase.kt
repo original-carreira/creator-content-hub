@@ -7,14 +7,10 @@ class SearchJobsUseCase(
     private val repository: JobSearchRepository
 ) {
 
-    fun execute(query: String?, limit: Int?, offset: Int?): SearchResult {
+    fun execute(query: String, limit: Int?, offset: Int?): SearchResult {
 
-        require(!query.isNullOrBlank()) {
-            "query must not be empty"
-        }
-
-        val safeLimit = (limit ?: 20).coerceAtMost(100)
-        val safeOffset = offset ?: 0
+        val safeLimit = (limit ?: 20).coerceIn(1, 100)
+        val safeOffset = (offset ?: 0).coerceAtLeast(0)
 
         val results = repository.search(query, safeLimit, safeOffset)
         val total = repository.count(query)
