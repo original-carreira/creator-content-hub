@@ -4,6 +4,7 @@ import com.creatorcontenthub.application.dto.IngestStatusResponse
 import com.creatorcontenthub.application.dto.IngestYoutubeRequest
 import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
+import com.creatorcontenthub.application.usecase.ListJobsUseCase
 import com.creatorcontenthub.domain.exception.TooManyRequestsException
 import com.creatorcontenthub.infrastructure.http.respondError
 import com.creatorcontenthub.infrastructure.http.respondSuccess
@@ -15,7 +16,8 @@ import io.ktor.server.routing.*
 
 fun Route.ingestRoutes(
     useCase: IngestYoutubeUseCase,
-    jobRepository: JobRepository
+    jobRepository: JobRepository,
+    listJobsUseCase: ListJobsUseCase
 ) {
 
     post("/ingest/youtube") {
@@ -88,11 +90,75 @@ fun Route.ingestRoutes(
             finishedAt = state.finishedAt,
             errorType = state.errorType?.name,
             errorMessage = state.errorMessage,
-
-            // 🔥 NOVO CAMPO
             transcription = state.transcription
         )
 
         call.respondSuccess(response)
+    }
+
+    get("/jobs") {
+
+        val params = call.request.queryParameters
+
+        val status = params["status"]
+        val sort = params["sort"]
+
+        val limitRaw = params["limit"]
+        val offsetRaw = params["offset"]
+        val fromRaw = params["from"]
+        val toRaw = params["to"]
+
+        val limit = limitRaw?.toIntOrNull()
+        val offset = offsetRaw?.toIntOrNull()
+        val from = fromRaw?.toLongOrNull()
+        val to = toRaw?.toLongOrNull()
+
+        // 🔒 validação antecipada (evita passar lixo pro use case)
+        if (limitRaw != null && limit == null) {
+            call.respondError(HttpStatusCode.BadRequest, "Invalid limit")
+            return@get
+        }
+
+        if (offsetRaw != null && offset == null) {
+            call.respondError(HttpStatusCode.BadRequest, "Invalid offset")
+            return@get
+        }
+
+        if (fromRaw != null && from == null) {
+            call.respondError(HttpStatusCode.BadRequest, "Invalid from timestamp")
+            return@get
+        }
+
+        if (toRaw != null && to == null) {
+            call.respondError(HttpStatusCode.BadRequest, "Invalid to timestamp")
+            return@get
+        }
+
+        try {
+            val response = listJobsUseCase.execute(
+                status = status,
+                from = from,
+                to = to,
+                sort = sort,
+                limit = limit,
+                offset = offset
+            )
+
+            call.respondSuccess(response)
+
+        } catch (ex: IllegalArgumentException) {
+
+            call.respondError(
+                HttpStatusCode.BadRequest,
+                ex.message ?: "Invalid query parameters"
+            )
+
+        } catch (ex: Exception) {
+
+            call.respondError(
+                HttpStatusCode.InternalServerError,
+                "Failed to list jobs"
+            )
+        }
     }
 }
