@@ -14,7 +14,9 @@ import com.creatorcontenthub.application.usecase.ProcessTextUseCase
 import com.creatorcontenthub.application.usecase.ExportTextUseCase
 import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
 import com.creatorcontenthub.application.usecase.ListJobsUseCase
+import com.creatorcontenthub.application.usecase.SearchJobsUseCase
 import com.creatorcontenthub.controller.healthDbRoute
+import com.creatorcontenthub.controller.searchRoutes
 import com.creatorcontenthub.infrastructure.adapter.YtDlpVideoIngestionAdapter
 import com.creatorcontenthub.infrastructure.adapter.WhisperTranscriptionAdapter
 import com.creatorcontenthub.infrastructure.adapter.FallbackSummarizationAdapter
@@ -22,6 +24,7 @@ import com.creatorcontenthub.infrastructure.adapter.FallbackTextProcessorAdapter
 import com.creatorcontenthub.infrastructure.adapter.LocalTextProcessorAdapter
 import com.creatorcontenthub.infrastructure.adapter.PostgresJobQueryRepository
 import com.creatorcontenthub.infrastructure.adapter.PostgresJobRepository
+import com.creatorcontenthub.infrastructure.adapter.PostgresJobSearchRepository
 import com.creatorcontenthub.infrastructure.adapter.PythonTextProcessorAdapter
 import com.creatorcontenthub.infrastructure.adapter.TxtExporterAdapter
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
@@ -39,6 +42,7 @@ import io.ktor.server.routing.*
 import kotlinx.serialization.json.Json
 import org.slf4j.event.Level
 import org.slf4j.LoggerFactory
+import org.flywaydb.core.Flyway
 import io.ktor.server.request.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -104,6 +108,13 @@ fun Application.module() {
     // 🔥 ADAPTAÇÃO CORRETA (PORT)
     val dataSource = DataSourceFactory.create(environment.config)
 
+    Flyway.configure()
+        .dataSource(dataSource)
+        .baselineOnMigrate(true)
+        .baselineVersion("1")
+        .load()
+        .migrate()
+
     val hikariMetrics = HikariMetrics(dataSource)
 
     val jobRepository = PostgresJobRepository(dataSource)
@@ -112,6 +123,8 @@ fun Application.module() {
     }
 
     val jobQueryRepository = PostgresJobQueryRepository(dataSource)
+    val jobSearchRepository = PostgresJobSearchRepository(dataSource)
+    val searchJobsUseCase = SearchJobsUseCase(jobSearchRepository)
     val listJobsUseCase = ListJobsUseCase(jobQueryRepository)
 
     val ingestionMetrics = IngestionMetrics()
@@ -176,7 +189,8 @@ fun Application.module() {
         ingestionMetrics,
         hikariMetrics,
         dataSource,
-        listJobsUseCase
+        listJobsUseCase,
+        searchJobsUseCase
     )
 }
 
@@ -237,12 +251,14 @@ fun Application.configureRouting(
     hikariMetrics: HikariMetrics,
     dataSource: HikariDataSource,
     listJobsUseCase: ListJobsUseCase,
+    searchJobsUseCase: SearchJobsUseCase,
 ) {
     routing {
         healthRoutes()
         healthDbRoute(dataSource)
         textRoutes(processTextUseCase)
         exportRoutes(exportTextUseCase)
+        searchRoutes(searchJobsUseCase)
 
         ingestRoutes(
             ingestYoutubeUseCase,
