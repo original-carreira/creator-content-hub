@@ -16,7 +16,7 @@ data class JobListItemResponse(
         fun from(jobId: String, job: JobState): JobListItemResponse {
             return JobListItemResponse(
                 jobId = jobId,
-                status = job.status.name, // 🔥 conversão aqui
+                status = job.status.name,
                 createdAt = job.createdAt,
                 finishedAt = job.finishedAt,
                 hasTranscription = !job.transcription.isNullOrBlank(),
