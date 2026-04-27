@@ -2,7 +2,6 @@ package com.creatorcontenthub.infrastructure.adapter
 
 import com.creatorcontenthub.application.port.JobSearchRepository
 import com.creatorcontenthub.application.port.JobSearchResult
-import com.creatorcontenthub.infrastructure.search.SearchQueryBuilder
 import javax.sql.DataSource
 import java.time.Instant
 
@@ -28,7 +27,7 @@ class PostgresJobSearchRepository(
 
         val sql = """
             WITH query AS (
-                SELECT to_tsquery('portuguese', ?) AS q
+                SELECT websearch_to_tsquery('portuguese', ?) AS q
             ),
             scored AS (
                 SELECT
@@ -92,88 +91,70 @@ class PostgresJobSearchRepository(
             LIMIT ? OFFSET ?
         """.trimIndent()
 
+        val sanitizedQuery = query.trim()
+        if (sanitizedQuery.isBlank()) return emptyList()
+
         dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
 
-            val andQuery = SearchQueryBuilder.toPrefixTsQuery(query)
+                var i = 1
 
-            if (andQuery.isBlank()) return emptyList()
+                stmt.setString(i++, sanitizedQuery)
+                stmt.setDouble(i++, recencyDecay)
 
-            val orQuery = SearchQueryBuilder.toOrTsQuery(query)
+                // status
+                stmt.setString(i++, status)
+                stmt.setString(i++, status)
 
-            fun execute(tsQueryParam: String): List<JobSearchResult> {
-                conn.prepareStatement(sql).use { stmt ->
+                // from
+                stmt.setObject(i++, from)
+                stmt.setObject(i++, from)
 
-                    var i = 1
+                // to
+                stmt.setObject(i++, to)
+                stmt.setObject(i++, to)
 
-                    stmt.setString(i++, tsQueryParam)
-                    stmt.setDouble(i++, recencyDecay)
+                // weights
+                stmt.setDouble(i++, rankWeight)
+                stmt.setDouble(i++, timeWeight)
 
-                    // status
-                    stmt.setString(i++, status)
-                    stmt.setString(i++, status)
+                // status boost
+                stmt.setDouble(i++, doneBoost)
+                stmt.setDouble(i++, failedBoost)
+                stmt.setDouble(i++, defaultBoost)
 
-                    // from
-                    stmt.setObject(i++, from)
-                    stmt.setObject(i++, from)
+                stmt.setDouble(i++, maxScore)
 
-                    // to
-                    stmt.setObject(i++, to)
-                    stmt.setObject(i++, to)
+                // pagination
+                stmt.setInt(i++, limit)
+                stmt.setInt(i++, offset)
 
-                    // weights
-                    stmt.setDouble(i++, rankWeight)
-                    stmt.setDouble(i++, timeWeight)
+                val rs = stmt.executeQuery()
+                val results = mutableListOf<JobSearchResult>()
 
-                    // status boost
-                    stmt.setDouble(i++, doneBoost)
-                    stmt.setDouble(i++, failedBoost)
-                    stmt.setDouble(i++, defaultBoost)
-
-                    stmt.setDouble(i++, maxScore)
-
-                    // pagination
-                    stmt.setInt(i++, limit)
-                    stmt.setInt(i++, offset)
-
-                    val rs = stmt.executeQuery()
-                    val results = mutableListOf<JobSearchResult>()
-
-                    while (rs.next()) {
-                        val createdAt = try {
-                            val epoch = rs.getLong("created_at")
-                            Instant.ofEpochMilli(epoch)
-                        } catch (e: Exception) {
-                            Instant.EPOCH
-                        }
-
-                        results.add(
-                            JobSearchResult(
-                                jobId = rs.getString("job_id"),
-                                status = rs.getString("status"),
-                                createdAt = createdAt.toString(),
-                                snippet = rs.getString("snippet") ?: "",
-                                rank = rs.getDouble("rank"),
-                                recencyScore = rs.getDouble("recency_score"),
-                                finalScore = rs.getDouble("final_score")
-                            )
-                        )
+                while (rs.next()) {
+                    val createdAt = try {
+                        val epoch = rs.getLong("created_at")
+                        Instant.ofEpochMilli(epoch)
+                    } catch (e: Exception) {
+                        Instant.EPOCH
                     }
 
-                    return results
+                    results.add(
+                        JobSearchResult(
+                            jobId = rs.getString("job_id"),
+                            status = rs.getString("status"),
+                            createdAt = createdAt.toString(),
+                            snippet = rs.getString("snippet") ?: "",
+                            rank = rs.getDouble("rank"),
+                            recencyScore = rs.getDouble("recency_score"),
+                            finalScore = rs.getDouble("final_score")
+                        )
+                    )
                 }
-            }
 
-            val results = execute(andQuery)
-
-            if (results.isNotEmpty()) {
                 return results
             }
-
-            if (orQuery.isBlank()) {
-                return emptyList()
-            }
-
-            return execute(orQuery)
         }
     }
 
@@ -186,7 +167,7 @@ class PostgresJobSearchRepository(
 
         val sql = """
             WITH query AS (
-                SELECT to_tsquery('portuguese', ?) AS q
+                SELECT websearch_to_tsquery('portuguese', ?) AS q
             )
             SELECT COUNT(*)
             FROM jobs, query
@@ -198,50 +179,33 @@ class PostgresJobSearchRepository(
                 AND (?::bigint IS NULL OR created_at <= ?)
         """.trimIndent()
 
+        val sanitizedQuery = query.trim()
+        if (sanitizedQuery.isBlank()) return 0
+
         dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
 
-            val andQuery = SearchQueryBuilder.toPrefixTsQuery(query)
-            if (andQuery.isBlank()) return 0
+                var i = 1
 
-            val orQuery = SearchQueryBuilder.toOrTsQuery(query)
+                stmt.setString(i++, sanitizedQuery)
 
-            fun execute(tsQueryParam: String): Long {
-                conn.prepareStatement(sql).use { stmt ->
+                // status
+                stmt.setString(i++, status)
+                stmt.setString(i++, status)
 
-                    var i = 1
+                // from
+                stmt.setObject(i++, from)
+                stmt.setObject(i++, from)
 
-                    stmt.setString(i++, tsQueryParam)
+                // to
+                stmt.setObject(i++, to)
+                stmt.setObject(i++, to)
 
-                    // status
-                    stmt.setString(i++, status)
-                    stmt.setString(i++, status)
+                val rs = stmt.executeQuery()
+                rs.next()
 
-                    // from
-                    stmt.setObject(i++, from)
-                    stmt.setObject(i++, from)
-
-                    // to
-                    stmt.setObject(i++, to)
-                    stmt.setObject(i++, to)
-
-                    val rs = stmt.executeQuery()
-                    rs.next()
-
-                    return rs.getLong(1)
-                }
+                return rs.getLong(1)
             }
-
-            val count = execute(andQuery)
-
-            if (count > 0) {
-                return count
-            }
-
-            if (orQuery.isBlank()) {
-                return 0
-            }
-
-            return execute(orQuery)
         }
     }
 }

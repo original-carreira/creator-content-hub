@@ -44,6 +44,8 @@ import org.slf4j.event.Level
 import org.slf4j.LoggerFactory
 import org.flywaydb.core.Flyway
 import io.ktor.server.request.*
+import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -141,7 +143,13 @@ fun Application.module() {
             ?.toDouble()
             ?: 7.0
     )
-    val searchJobsUseCase = SearchJobsUseCase(jobSearchRepository)
+
+    val meterRegistry: MeterRegistry = SimpleMeterRegistry()
+
+    val searchJobsUseCase = SearchJobsUseCase(
+        repository = jobSearchRepository,
+        meterRegistry = meterRegistry
+    )
     val listJobsUseCase = ListJobsUseCase(jobQueryRepository)
 
     val ingestionMetrics = IngestionMetrics()
