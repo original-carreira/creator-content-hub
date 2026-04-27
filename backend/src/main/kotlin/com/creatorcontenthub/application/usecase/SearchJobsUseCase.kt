@@ -15,7 +15,7 @@ class SearchJobsUseCase(
 
     private val logger = LoggerFactory.getLogger(SearchJobsUseCase::class.java)
 
-    // 🔹 Metrics
+    // Metrics
     private val searchCounter: Counter =
         Counter.builder("search_queries_total")
             .description("Total number of search queries")
@@ -80,14 +80,14 @@ class SearchJobsUseCase(
             SearchResult(mappedResults, total)
         }
 
-        // 🔹 Metrics counters
+        // Metrics counters
         searchCounter.increment()
 
         if (result.items.isEmpty()) {
             emptyCounter.increment()
         }
 
-        // 🔹 Structured log (principal)
+        // Structured log (principal)
         logger.info(
             "event=search_executed q={} status={} from={} to={} results={}",
             query,
@@ -97,7 +97,7 @@ class SearchJobsUseCase(
             result.items.size
         )
 
-        // 🔹 Top result log
+        // Top result log
         if (result.items.isNotEmpty()) {
             val top = result.items.first()
             logger.info(
@@ -107,7 +107,7 @@ class SearchJobsUseCase(
             )
         }
 
-        // 🔹 Debug log (somente quando solicitado)
+        // Debug log (somente quando solicitado)
         if (debug && result.items.isNotEmpty()) {
 
             val topScore = result.items.first().finalScore ?: 0.0
