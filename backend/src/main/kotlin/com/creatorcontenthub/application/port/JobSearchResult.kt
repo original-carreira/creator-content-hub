@@ -9,7 +9,9 @@ data class JobSearchResult(
     val status: String,
     val createdAt: String,
     val snippet: String,
-    val rank: Double
+    val rank: Double,
+    val recencyScore: Double? = null,
+    val finalScore: Double? = null
 )
 
 interface JobSearchRepository {
