@@ -2,11 +2,19 @@ package com.creatorcontenthub.infrastructure.adapter
 
 import com.creatorcontenthub.application.port.JobSearchRepository
 import com.creatorcontenthub.application.port.JobSearchResult
+import com.creatorcontenthub.infrastructure.search.SearchQueryBuilder
 import javax.sql.DataSource
 import java.time.Instant
 
 class PostgresJobSearchRepository(
-    private val dataSource: DataSource
+    private val dataSource: DataSource,
+    private val rankWeight: Double,
+    private val timeWeight: Double,
+    private val doneBoost: Double,
+    private val failedBoost: Double,
+    private val defaultBoost: Double,
+    private val maxScore: Double,
+    private val recencyDecay: Double
 ) : JobSearchRepository {
 
     override fun search(
@@ -20,79 +28,152 @@ class PostgresJobSearchRepository(
 
         val sql = """
             WITH query AS (
-                SELECT plainto_tsquery('portuguese', ?) AS q
+                SELECT to_tsquery('portuguese', ?) AS q
+            ),
+            scored AS (
+                SELECT
+                    job_id,
+                    status,
+                    created_at,
+
+                    COALESCE(
+                        ts_headline(
+                            'portuguese',
+                            coalesce(summary, ''),
+                            query.q
+                        ),
+                        ''
+                    ) AS snippet,
+
+                    COALESCE(ts_rank_cd(search_vector, query.q), 0) AS rank,
+
+                    EXP(
+                        -(
+                            EXTRACT(EPOCH FROM (NOW() - to_timestamp(created_at / 1000))) / 86400
+                        ) / ?
+                    ) AS recency_score
+
+                FROM jobs, query
+                WHERE
+                    search_vector @@ query.q
+                    AND created_at IS NOT NULL
+                    AND (?::text IS NULL OR status = ?)
+                    AND (?::bigint IS NULL OR created_at >= ?)
+                    AND (?::bigint IS NULL OR created_at <= ?)
             )
             SELECT
                 job_id,
                 status,
                 created_at,
-                COALESCE(
-                    ts_headline(
-                        'portuguese',
-                        coalesce(summary, ''),
-                        query.q
+                snippet,
+                rank,
+                recency_score,
+
+                GREATEST(
+                    LEAST(
+                        (
+                            (
+                                rank * ? +
+                                recency_score * ?
+                            ) *
+                            CASE
+                                WHEN status = 'DONE' THEN ?
+                                WHEN status = 'FAILED' THEN ?
+                                ELSE ?
+                            END
+                        ),
+                        ?
                     ),
-                    ''
-                ) AS snippet,
-                COALESCE(ts_rank_cd(search_vector, query.q), 0) AS rank
-        FROM jobs, query
-        WHERE
-            search_vector @@ query.q
-            AND created_at IS NOT NULL
-            AND (?::text IS NULL OR status = ?)
-            AND (?::bigint IS NULL OR created_at >= ?)
-            AND (?::bigint IS NULL OR created_at <= ?)
-        ORDER BY rank DESC
-        LIMIT ? OFFSET ?
-    """.trimIndent()
+                    0
+                ) AS final_score
+
+            FROM scored
+            ORDER BY final_score DESC
+            LIMIT ? OFFSET ?
+        """.trimIndent()
+
         dataSource.connection.use { conn ->
-            conn.prepareStatement(sql).use { stmt ->
 
-                var i = 1
+            val andQuery = SearchQueryBuilder.toPrefixTsQuery(query)
 
-                stmt.setString(i++, query)
+            if (andQuery.isBlank()) return emptyList()
 
-                // status
-                stmt.setString(i++, status)
-                stmt.setString(i++, status)
+            val orQuery = SearchQueryBuilder.toOrTsQuery(query)
 
-                // from
-                stmt.setObject(i++, from)
-                stmt.setObject(i++, from)
+            fun execute(tsQueryParam: String): List<JobSearchResult> {
+                conn.prepareStatement(sql).use { stmt ->
 
-                // to
-                stmt.setObject(i++, to)
-                stmt.setObject(i++, to)
+                    var i = 1
 
-                // pagination
-                stmt.setInt(i++, limit)
-                stmt.setInt(i++, offset)
+                    stmt.setString(i++, tsQueryParam)
+                    stmt.setDouble(i++, recencyDecay)
 
-                val rs = stmt.executeQuery()
-                val results = mutableListOf<JobSearchResult>()
+                    // status
+                    stmt.setString(i++, status)
+                    stmt.setString(i++, status)
 
-                while (rs.next()) {
+                    // from
+                    stmt.setObject(i++, from)
+                    stmt.setObject(i++, from)
 
-                    val createdAt = try {
-                        val epoch = rs.getLong("created_at")
-                        Instant.ofEpochMilli(epoch)
-                    } catch (e: Exception) {
-                        Instant.EPOCH
+                    // to
+                    stmt.setObject(i++, to)
+                    stmt.setObject(i++, to)
+
+                    // weights
+                    stmt.setDouble(i++, rankWeight)
+                    stmt.setDouble(i++, timeWeight)
+
+                    // status boost
+                    stmt.setDouble(i++, doneBoost)
+                    stmt.setDouble(i++, failedBoost)
+                    stmt.setDouble(i++, defaultBoost)
+
+                    stmt.setDouble(i++, maxScore)
+
+                    // pagination
+                    stmt.setInt(i++, limit)
+                    stmt.setInt(i++, offset)
+
+                    val rs = stmt.executeQuery()
+                    val results = mutableListOf<JobSearchResult>()
+
+                    while (rs.next()) {
+                        val createdAt = try {
+                            val epoch = rs.getLong("created_at")
+                            Instant.ofEpochMilli(epoch)
+                        } catch (e: Exception) {
+                            Instant.EPOCH
+                        }
+
+                        results.add(
+                            JobSearchResult(
+                                jobId = rs.getString("job_id"),
+                                status = rs.getString("status"),
+                                createdAt = createdAt.toString(),
+                                snippet = rs.getString("snippet") ?: "",
+                                rank = rs.getDouble("rank"),
+                                recencyScore = rs.getDouble("recency_score"),
+                                finalScore = rs.getDouble("final_score")
+                            )
+                        )
                     }
 
-                    results.add(
-                        JobSearchResult(
-                            jobId = rs.getString("job_id"),
-                            status = rs.getString("status"),
-                            createdAt = createdAt.toString(),
-                            snippet = rs.getString("snippet") ?: "",
-                            rank = rs.getDouble("rank")
-                        )
-                    )
+                    return results
                 }
+            }
 
+            val results = execute(andQuery)
+
+            if (results.isNotEmpty()) {
                 return results
             }
+
+            if (orQuery.isBlank()) {
+                return emptyList()
+            }
+
+            return execute(orQuery)
         }
     }
 
@@ -102,9 +183,10 @@ class PostgresJobSearchRepository(
         from: Long?,
         to: Long?
     ): Long {
+
         val sql = """
             WITH query AS (
-                SELECT plainto_tsquery('portuguese', ?) AS q
+                SELECT to_tsquery('portuguese', ?) AS q
             )
             SELECT COUNT(*)
             FROM jobs, query
@@ -114,31 +196,52 @@ class PostgresJobSearchRepository(
                 AND (?::text IS NULL OR status = ?)
                 AND (?::bigint IS NULL OR created_at >= ?)
                 AND (?::bigint IS NULL OR created_at <= ?)
-       """.trimIndent()
+        """.trimIndent()
+
         dataSource.connection.use { conn ->
-            conn.prepareStatement(sql).use { stmt ->
 
-                var i = 1
+            val andQuery = SearchQueryBuilder.toPrefixTsQuery(query)
+            if (andQuery.isBlank()) return 0
 
-                stmt.setString(i++, query)
+            val orQuery = SearchQueryBuilder.toOrTsQuery(query)
 
-                // status
-                stmt.setString(i++, status)
-                stmt.setString(i++, status)
+            fun execute(tsQueryParam: String): Long {
+                conn.prepareStatement(sql).use { stmt ->
 
-                // from
-                stmt.setObject(i++, from)
-                stmt.setObject(i++, from)
+                    var i = 1
 
-                // to
-                stmt.setObject(i++, to)
-                stmt.setObject(i++, to)
+                    stmt.setString(i++, tsQueryParam)
 
-                val rs = stmt.executeQuery()
-                rs.next()
+                    // status
+                    stmt.setString(i++, status)
+                    stmt.setString(i++, status)
 
-                return rs.getLong(1)
+                    // from
+                    stmt.setObject(i++, from)
+                    stmt.setObject(i++, from)
+
+                    // to
+                    stmt.setObject(i++, to)
+                    stmt.setObject(i++, to)
+
+                    val rs = stmt.executeQuery()
+                    rs.next()
+
+                    return rs.getLong(1)
+                }
             }
+
+            val count = execute(andQuery)
+
+            if (count > 0) {
+                return count
+            }
+
+            if (orQuery.isBlank()) {
+                return 0
+            }
+
+            return execute(orQuery)
         }
     }
 }

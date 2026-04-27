@@ -123,7 +123,24 @@ fun Application.module() {
     }
 
     val jobQueryRepository = PostgresJobQueryRepository(dataSource)
-    val jobSearchRepository = PostgresJobSearchRepository(dataSource)
+    val config = environment.config
+
+    val jobSearchRepository = PostgresJobSearchRepository(
+        dataSource = dataSource,
+        rankWeight = config.property("search.rank.textWeight").getString().toDouble(),
+        timeWeight = config.property("search.rank.timeWeight").getString().toDouble(),
+        doneBoost = config.property("search.rank.statusBoost.DONE").getString().toDouble(),
+        failedBoost = config.property("search.rank.statusBoost.FAILED").getString().toDouble(),
+        defaultBoost = config.property("search.rank.statusBoost.DEFAULT").getString().toDouble(),
+        maxScore = config.propertyOrNull("search.rank.maxScore")
+            ?.getString()
+            ?.toDouble()
+            ?: 2.0,
+        recencyDecay = config.propertyOrNull("search.rank.recencyDecay")
+            ?.getString()
+            ?.toDouble()
+            ?: 7.0
+    )
     val searchJobsUseCase = SearchJobsUseCase(jobSearchRepository)
     val listJobsUseCase = ListJobsUseCase(jobQueryRepository)
 
