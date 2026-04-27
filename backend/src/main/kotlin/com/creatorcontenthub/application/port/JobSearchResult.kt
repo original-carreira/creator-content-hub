@@ -1,5 +1,6 @@
 package com.creatorcontenthub.application.port
 
+import com.creatorcontenthub.application.dto.SearchDebugInfo
 import kotlinx.serialization.Serializable
 import java.time.Instant
 
@@ -11,7 +12,8 @@ data class JobSearchResult(
     val snippet: String,
     val rank: Double,
     val recencyScore: Double? = null,
-    val finalScore: Double? = null
+    val finalScore: Double? = null,
+    val debug: SearchDebugInfo? = null
 )
 
 interface JobSearchRepository {

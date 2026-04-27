@@ -19,6 +19,7 @@ fun Route.searchRoutes(useCase: SearchJobsUseCase) {
         val toRaw = call.request.queryParameters["to"]
         val limitRaw = call.request.queryParameters["limit"]
         val offsetRaw = call.request.queryParameters["offset"]
+        val debug = call.request.queryParameters["debug"] == "true"
 
         val from = fromRaw?.toLongOrNull()
         val to = toRaw?.toLongOrNull()
@@ -68,7 +69,8 @@ fun Route.searchRoutes(useCase: SearchJobsUseCase) {
             from = from,
             to = to,
             limit = limit,
-            offset = offset
+            offset = offset,
+            debug = debug
         )
 
         call.respondSuccess(result)
