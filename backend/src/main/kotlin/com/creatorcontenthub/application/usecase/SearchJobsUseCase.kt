@@ -2,35 +2,38 @@ package com.creatorcontenthub.application.usecase
 
 import com.creatorcontenthub.application.dto.SearchDebugInfo
 import com.creatorcontenthub.application.port.JobSearchRepository
+import io.micrometer.core.instrument.DistributionSummary
 import kotlinx.serialization.Serializable
 import org.slf4j.LoggerFactory
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.Timer
+import kotlin.random.Random
 
 class SearchJobsUseCase(
     private val repository: JobSearchRepository,
-    private val meterRegistry: MeterRegistry
+    private val meterRegistry: MeterRegistry,
+    private val analyticsEnabled: Boolean =
+        System.getenv("SEARCH_ANALYTICS_ENABLED")?.toBoolean() ?: true
 ) {
 
     private val logger = LoggerFactory.getLogger(SearchJobsUseCase::class.java)
-
-    // Metrics
-    private val searchCounter: Counter =
-        Counter.builder("search_queries_total")
-            .description("Total number of search queries")
-            .register(meterRegistry)
-
-    private val emptyCounter: Counter =
-        Counter.builder("search_queries_empty_total")
-            .description("Search queries with no results")
-            .register(meterRegistry)
 
     private val timer: Timer =
         Timer.builder("search_query_duration")
             .description("Search query execution time")
             .publishPercentiles(0.5, 0.9, 0.99)
             .register(meterRegistry)
+
+    private fun sanitizeQuery(input: String): String {
+        return input
+            .take(100) // limite tamanho
+            .replace(Regex("[\\n\\r\\t]"), " ") // remove quebra de linha
+    }
+
+    private fun shouldSample(rate: Double = 0.1): Boolean {
+        return Random.nextDouble() < rate
+    }
 
     fun execute(
         query: String,
@@ -41,6 +44,8 @@ class SearchJobsUseCase(
         offset: Int?,
         debug: Boolean
     ): SearchResult {
+
+        val startTime = System.currentTimeMillis()
 
         val result = timer.recordCallable {
 
@@ -80,24 +85,69 @@ class SearchJobsUseCase(
             SearchResult(mappedResults, total)
         }
 
-        // Metrics counters
-        searchCounter.increment()
+        val durationMs = System.currentTimeMillis() - startTime
+
+        val safeQuery = sanitizeQuery(query)
+
+        // --- SEARCH ANALYTICS METRICS (LOW CARDINALITY) ---
+
+        val hasResults = result.items.isNotEmpty().toString()
+        val statusFilter = if (status != null) "present" else "absent"
+
+        Counter.builder("search_query_total")
+            .tag("has_results", hasResults)
+            .tag("status_filter", statusFilter)
+            .register(meterRegistry)
+            .increment()
 
         if (result.items.isEmpty()) {
-            emptyCounter.increment()
+            Counter.builder("search_query_empty_total")
+                .tag("status_filter", statusFilter)
+                .register(meterRegistry)
+                .increment()
+
+            if (analyticsEnabled) {
+                logger.info(
+                    "event=search_executed q={} status={} from={} to={} results={}",
+                    safeQuery,
+                    status,
+                    from,
+                    to,
+                    result.items.size
+                )
+            }
         }
 
-        // Structured log (principal)
+        // --- RESULT DISTRIBUTION METRIC ---
+
+        DistributionSummary.builder("search_results_count")
+            .tag("status_filter", statusFilter)
+            .register(meterRegistry)
+            .record(result.items.size.toDouble())
+
+        // --- SEARCH ANALYTICS LOG (NOVO) ---
+
+        if (analyticsEnabled && shouldSample()) {
+            logger.info(
+                "event=search_analytics q={} result_count={} has_results={} duration_ms={}",
+                safeQuery,
+                result.items.size,
+                result.items.isNotEmpty(),
+                durationMs
+            )
+        }
+
+        // --- LOGS OPERACIONAIS (SEMPRE ATIVOS, MAS SANITIZADOS) ---
+
         logger.info(
             "event=search_executed q={} status={} from={} to={} results={}",
-            query,
+            safeQuery,
             status,
             from,
             to,
             result.items.size
         )
 
-        // Top result log
         if (result.items.isNotEmpty()) {
             val top = result.items.first()
             logger.info(
@@ -107,7 +157,6 @@ class SearchJobsUseCase(
             )
         }
 
-        // Debug log (somente quando solicitado)
         if (debug && result.items.isNotEmpty()) {
 
             val topScore = result.items.first().finalScore ?: 0.0
