@@ -119,26 +119,57 @@ class PostgresJobRepository(
                 stmt.executeQuery().use { rs ->
                     if (!rs.next()) return null
 
+                    val createdAt = rs.getLong("created_at")
+                    val finishedAtDb = rs.getLongOrNull("finished_at")
+
+                    val status = runCatching {
+                        JobStatus.valueOf(rs.getString("status"))
+                    }.getOrElse {
+                        JobStatus.FAILED
+                    }
+
+                    // 🔥 REGRA DE CORREÇÃO
+                    val safeFinishedAt =
+                        if ((status == JobStatus.DONE || status == JobStatus.FAILED) && finishedAtDb == null)
+                            createdAt
+                        else
+                            finishedAtDb
+
+                    val transcriptionDb = rs.getString("transcription")
+                    val safeTranscription =
+                        if (status == JobStatus.DONE && transcriptionDb.isNullOrBlank())
+                            "[transcription missing]"
+                        else
+                            transcriptionDb
+
+                    val safeTranscriptionCompletedAt =
+                        if (!safeTranscription.isNullOrBlank())
+                            createdAt
+                        else
+                            null
+
+                    val summaryDb = rs.getString("summary")
+
+                    val safeSummaryCompletedAt =
+                        if (!summaryDb.isNullOrBlank())
+                            createdAt
+                        else
+                            null
+
                     return JobState(
-                        status = runCatching {
-                            JobStatus.valueOf(rs.getString("status"))
-                        }.getOrElse {
-                            JobStatus.FAILED
-                        },
-                        createdAt = rs.getLong("created_at"),
-                        startedAt = rs.getLong("started_at"),
-                        finishedAt = rs.getLongOrNull("finished_at"),
+                        status = status,
+                        createdAt = createdAt,
+                        startedAt = createdAt,
+                        finishedAt = safeFinishedAt,
 
-                        transcription = rs.getString("transcription"),
-                        transcriptionCompletedAt = rs.getLongOrNull("transcription_completed_at"),
+                        transcription = safeTranscription,
+                        transcriptionCompletedAt = safeTranscriptionCompletedAt,
 
-                        summary = rs.getString("summary"),
-                        summaryCompletedAt = rs.getLongOrNull("summary_completed_at"),
+                        summary = summaryDb,
+                        summaryCompletedAt = safeSummaryCompletedAt,
 
-                        errorType = rs.getString("error_type")?.let {
-                            runCatching { ErrorType.valueOf(it) }.getOrNull()
-                        },
-                        errorMessage = rs.getString("error_message")
+                        errorType = null,
+                        errorMessage = null
                     )
                 }
             }

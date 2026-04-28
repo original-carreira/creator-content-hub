@@ -16,6 +16,7 @@ import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
 import com.creatorcontenthub.application.usecase.ListJobsUseCase
 import com.creatorcontenthub.application.usecase.SearchJobsUseCase
 import com.creatorcontenthub.controller.healthDbRoute
+import com.creatorcontenthub.controller.jobRoutes
 import com.creatorcontenthub.controller.searchRoutes
 import com.creatorcontenthub.infrastructure.adapter.YtDlpVideoIngestionAdapter
 import com.creatorcontenthub.infrastructure.adapter.WhisperTranscriptionAdapter
@@ -36,6 +37,9 @@ import com.creatorcontenthub.infrastructure.metrics.PrometheusRegistry
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
+import io.ktor.server.http.content.resources
+import io.ktor.server.http.content.static
+import io.ktor.server.http.content.staticResources
 import io.ktor.server.netty.EngineMain
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.callloging.*
@@ -278,6 +282,7 @@ fun Application.configureRouting(
     dataSource: HikariDataSource,
     listJobsUseCase: ListJobsUseCase,
     searchJobsUseCase: SearchJobsUseCase,
+
 ) {
     routing {
         healthRoutes()
@@ -285,6 +290,7 @@ fun Application.configureRouting(
         textRoutes(processTextUseCase)
         exportRoutes(exportTextUseCase)
         searchRoutes(searchJobsUseCase)
+        jobRoutes(jobRepository)
 
         ingestRoutes(
             ingestYoutubeUseCase,
@@ -296,5 +302,7 @@ fun Application.configureRouting(
             ingestionMetrics,
             hikariMetrics
         )
+
+        staticResources("/", "frontend")
     }
 }
