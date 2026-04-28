@@ -68,7 +68,7 @@ class PostgresJobSearchRepository(
                 (
                     search_vector @@ query.q
                     OR summary ILIKE '%' || ? || '%'
-                    OR job_id = ? -- 🔥 FALLBACK DIRETO
+                    OR job_id = ?
                 )
                 AND created_at IS NOT NULL
                 AND (?::text IS NULL OR status = ?)
@@ -116,8 +116,8 @@ class PostgresJobSearchRepository(
 
                 stmt.setDouble(i++, recencyDecay)
 
-                stmt.setString(i++, normalizedQuery) // ILIKE
-                stmt.setString(i++, normalizedQuery) // job_id fallback
+                stmt.setString(i++, normalizedQuery)
+                stmt.setString(i++, normalizedQuery)
 
                 stmt.setString(i++, status)
                 stmt.setString(i++, status)
@@ -163,7 +163,7 @@ class PostgresJobSearchRepository(
                     )
                 }
 
-                // 🔥 FALLBACK FINAL (CASO ZERO RESULTADOS)
+                // FALLBACK FINAL (CASO ZERO RESULTADOS)
                 if (results.isEmpty()) {
                     val fallbackSql = """
                     SELECT job_id, status, created_at, summary
@@ -241,9 +241,9 @@ class PostgresJobSearchRepository(
 
                 var i = 1
 
-                stmt.setString(i++, sanitizedQuery) // websearch
-                stmt.setString(i++, sanitizedQuery) // fallback simple
-                stmt.setString(i++, sanitizedQuery) // ILIKE fallback
+                stmt.setString(i++, sanitizedQuery)
+                stmt.setString(i++, sanitizedQuery)
+                stmt.setString(i++, sanitizedQuery)
 
                 // status
                 stmt.setString(i++, status)

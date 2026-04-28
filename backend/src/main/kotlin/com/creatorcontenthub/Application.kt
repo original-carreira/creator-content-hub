@@ -37,8 +37,6 @@ import com.creatorcontenthub.infrastructure.metrics.PrometheusRegistry
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
-import io.ktor.server.http.content.resources
-import io.ktor.server.http.content.static
 import io.ktor.server.http.content.staticResources
 import io.ktor.server.netty.EngineMain
 import io.ktor.server.plugins.contentnegotiation.*
@@ -114,7 +112,7 @@ fun Application.module() {
     // INGEST + PIPELINE
     // =============================
 
-    // 🔥 ADAPTAÇÃO CORRETA (PORT)
+    // ADAPTACAOO CORRETA (PORT)
     val dataSource = DataSourceFactory.create(environment.config)
 
     Flyway.configure()
@@ -180,7 +178,7 @@ fun Application.module() {
     val summarizationAdapter = FallbackSummarizationAdapter()
 
     // =============================
-    // CONCORRÊNCIA / BACKPRESSURE
+    // CONCORRENCIA / BACKPRESSURE
     // =============================
 
     val maxConcurrentJobs = 4
@@ -253,7 +251,7 @@ fun Application.configureLogging() {
 }
 
 // =============================
-// SERIALIZAÇÃO
+// SERIALIZACAO
 // =============================
 
 fun Application.configureSerialization() {
