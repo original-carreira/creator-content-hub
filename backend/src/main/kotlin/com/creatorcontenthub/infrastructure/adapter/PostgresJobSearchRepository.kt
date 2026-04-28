@@ -27,7 +27,11 @@ class PostgresJobSearchRepository(
 
         val sql = """
             WITH query AS (
-                SELECT websearch_to_tsquery('portuguese', ?) AS q
+                SELECT
+                    COALESCE(
+                        websearch_to_tsquery('portuguese', ?),
+                        plainto_tsquery('simple', ?)
+                    ) AS q
             ),
             scored AS (
                 SELECT
@@ -44,17 +48,20 @@ class PostgresJobSearchRepository(
                         ''
                     ) AS snippet,
 
-                    COALESCE(ts_rank_cd(search_vector, query.q), 0) AS rank,
+                    COALESCE(ts_rank_cd(search_vector, query.q) * 2.0, 0) AS rank,
 
                     EXP(
                         -(
                             EXTRACT(EPOCH FROM (NOW() - to_timestamp(created_at / 1000))) / 86400
-                        ) / ?
+                        ) / CAST(? AS DOUBLE PRECISION)
                     ) AS recency_score
 
                 FROM jobs, query
                 WHERE
-                    search_vector @@ query.q
+                    (
+                        search_vector @@ query.q
+                        OR summary ILIKE '%' || ? || '%'
+                    )
                     AND created_at IS NOT NULL
                     AND (?::text IS NULL OR status = ?)
                     AND (?::bigint IS NULL OR created_at >= ?)
@@ -91,7 +98,10 @@ class PostgresJobSearchRepository(
             LIMIT ? OFFSET ?
         """.trimIndent()
 
-        val sanitizedQuery = query.trim()
+        val sanitizedQuery = query
+            .trim()
+            .lowercase()
+            .replace(Regex("\\s+"), " ")
         if (sanitizedQuery.isBlank()) return emptyList()
 
         dataSource.connection.use { conn ->
@@ -99,8 +109,12 @@ class PostgresJobSearchRepository(
 
                 var i = 1
 
-                stmt.setString(i++, sanitizedQuery)
+                stmt.setString(i++, sanitizedQuery) // websearch
+                stmt.setString(i++, sanitizedQuery) // fallback simple
+
                 stmt.setDouble(i++, recencyDecay)
+
+                stmt.setString(i++, sanitizedQuery) // ILIKE fallback
 
                 // status
                 stmt.setString(i++, status)
@@ -167,19 +181,29 @@ class PostgresJobSearchRepository(
 
         val sql = """
             WITH query AS (
-                SELECT websearch_to_tsquery('portuguese', ?) AS q
+                SELECT 
+                    COALESCE(
+                        websearch_to_tsquery('portuguese', ?),
+                        plainto_tsquery('simple', ?)
+                    ) AS q
             )
             SELECT COUNT(*)
             FROM jobs, query
             WHERE
-                search_vector @@ query.q
+                (
+                    search_vector @@ query.q
+                    OR summary ILIKE '%' || ? || '%'
+                )
                 AND created_at IS NOT NULL
                 AND (?::text IS NULL OR status = ?)
                 AND (?::bigint IS NULL OR created_at >= ?)
                 AND (?::bigint IS NULL OR created_at <= ?)
         """.trimIndent()
 
-        val sanitizedQuery = query.trim()
+        val sanitizedQuery = query
+            .trim()
+            .lowercase()
+            .replace(Regex("\\s+"), " ")
         if (sanitizedQuery.isBlank()) return 0
 
         dataSource.connection.use { conn ->
@@ -187,7 +211,9 @@ class PostgresJobSearchRepository(
 
                 var i = 1
 
-                stmt.setString(i++, sanitizedQuery)
+                stmt.setString(i++, sanitizedQuery) // websearch
+                stmt.setString(i++, sanitizedQuery) // fallback simple
+                stmt.setString(i++, sanitizedQuery) // ILIKE fallback
 
                 // status
                 stmt.setString(i++, status)
