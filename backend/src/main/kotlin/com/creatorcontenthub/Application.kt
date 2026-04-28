@@ -32,6 +32,7 @@ import com.creatorcontenthub.infrastructure.concurrency.SemaphoreConcurrencyCont
 import com.creatorcontenthub.infrastructure.config.DataSourceFactory
 import com.creatorcontenthub.infrastructure.metrics.HikariMetrics
 import com.creatorcontenthub.infrastructure.metrics.JvmMetricsConfig
+import com.creatorcontenthub.infrastructure.metrics.PrometheusRegistry
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -64,7 +65,9 @@ fun Application.module() {
     configureLogging()
     configureSerialization()
     configureStatusPages()
-    JvmMetricsConfig.register()
+
+    val meterRegistry = PrometheusRegistry.registry
+    JvmMetricsConfig.register(meterRegistry)
 
     // =============================
     // PROCESSAMENTO TEXTO
@@ -143,8 +146,6 @@ fun Application.module() {
             ?.toDouble()
             ?: 7.0
     )
-
-    val meterRegistry: MeterRegistry = SimpleMeterRegistry()
 
     val searchJobsUseCase = SearchJobsUseCase(
         repository = jobSearchRepository,
