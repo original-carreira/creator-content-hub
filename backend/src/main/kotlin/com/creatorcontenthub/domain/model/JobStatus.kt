@@ -5,5 +5,9 @@ enum class JobStatus {
     PROCESSING,
     DONE,
     FAILED,
-    CANCELED
+    CANCELED;
+
+    fun isFinal(): Boolean {
+        return this == DONE || this == FAILED || this == CANCELED
+    }
 }
