@@ -47,9 +47,6 @@ class PostgresJobQueryRepository(
             ORDER BY $sortColumn $sortOrder
             LIMIT ? OFFSET ?
         """.trimIndent()
-        // retirar depois essas linhas
-        println("SQL FINAL = $sql")
-        println("sortColumn = $sortColumn | sortOrder = $sortOrder")
 
         val results = mutableListOf<JobListItemView>()
 

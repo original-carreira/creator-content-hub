@@ -157,12 +157,26 @@ class PostgresJobRepository(
     }
 
     override fun updateStatus(jobId: String, status: JobStatus) {
-        val sql = "UPDATE jobs SET status = ? WHERE job_id = ?"
+
+        val sql = """
+        UPDATE jobs 
+        SET status = ?, finished_at = ?
+        WHERE job_id = ?
+    """
 
         dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
+
                 stmt.setString(1, status.name)
-                stmt.setString(2, jobId)
+
+                if (status.isFinal()) {
+                    stmt.setLong(2, System.currentTimeMillis())
+                } else {
+                    stmt.setNull(2, java.sql.Types.BIGINT)
+                }
+
+                stmt.setString(3, jobId)
+
                 stmt.executeUpdate()
             }
         }

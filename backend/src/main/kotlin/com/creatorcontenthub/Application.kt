@@ -221,7 +221,9 @@ fun Application.module() {
     val cancelJobUseCase = CancelJobUseCase(jobRepository)
 
     environment.monitor.subscribe(ApplicationStopped) {
-        log.info("Shutting down application scope...")
+        log.info("Shutting down application...")
+
+        cleanupService.stop()
         applicationScope.cancel()
     }
 

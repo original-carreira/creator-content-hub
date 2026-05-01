@@ -22,6 +22,19 @@ class FileCleanupService(
         )
     }
 
+    fun stop() {
+        scheduler.shutdown()
+
+        try {
+            if (!scheduler.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                scheduler.shutdownNow()
+            }
+        } catch (e: InterruptedException) {
+            scheduler.shutdownNow()
+            Thread.currentThread().interrupt()
+        }
+    }
+
     private fun safeCleanup() {
         try {
             cleanup()
