@@ -14,12 +14,22 @@ class PostgresJobQueryRepository(
         status: JobStatus?,
         from: Long?,
         to: Long?,
-        sortDirection: String,
+        sort: String?,
+        order: String?,
         limit: Int,
         offset: Int
     ): List<JobListItemView> {
 
-        val orderBy = if (sortDirection == "asc") "ASC" else "DESC"
+        val sortColumn = when (sort) {
+            "createdAt" -> "created_at"
+            "status" -> "status"
+            else -> "created_at"
+        }
+
+        val sortOrder = when (order?.lowercase()) {
+            "asc" -> "ASC"
+            else -> "DESC"
+        }
 
         val sql = """
             SELECT 
@@ -34,9 +44,12 @@ class PostgresJobQueryRepository(
                 (? IS NULL OR status = ?)
                 AND (? IS NULL OR created_at >= ?)
                 AND (? IS NULL OR created_at <= ?)
-            ORDER BY created_at $orderBy
+            ORDER BY $sortColumn $sortOrder
             LIMIT ? OFFSET ?
         """.trimIndent()
+        // retirar depois essas linhas
+        println("SQL FINAL = $sql")
+        println("sortColumn = $sortColumn | sortOrder = $sortOrder")
 
         val results = mutableListOf<JobListItemView>()
 

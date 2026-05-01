@@ -14,6 +14,7 @@ class ListJobsUseCase(
         from: Long?,
         to: Long?,
         sort: String?,
+        order: String?,
         limit: Int?,
         offset: Int?
     ): JobListResponse {
@@ -35,12 +36,18 @@ class ListJobsUseCase(
             throw IllegalArgumentException("Invalid date range: from > to")
         }
 
-        val (sortField, sortDirection) = parseSort(sort)
-
         val safeLimit = (limit ?: 20).coerceIn(1, 100)
         val safeOffset = (offset ?: 0).coerceAtLeast(0)
 
-        val jobs = repository.findAll(parsedStatus, from, to, sortDirection, safeLimit, safeOffset)
+        val jobs = repository.findAll(
+            parsedStatus,
+            from,
+            to,
+            sort,
+            order,
+            safeLimit,
+            safeOffset
+        )
         val total = repository.count(parsedStatus, from, to)
 
         val items = jobs.map {
@@ -60,26 +67,5 @@ class ListJobsUseCase(
             limit = safeLimit,
             offset = safeOffset
         )
-    }
-
-    private fun parseSort(sort: String?): Pair<String, String> {
-        if (sort.isNullOrBlank()) {
-            return "created_at" to "desc"
-        }
-
-        val parts = sort.split(",")
-
-        val field = parts.getOrNull(0)?.lowercase()
-        val direction = parts.getOrNull(1)?.lowercase() ?: "desc"
-
-        if (field != "created_at") {
-            throw IllegalArgumentException("Invalid sort field: $field")
-        }
-
-        if (direction != "asc" && direction != "desc") {
-            throw IllegalArgumentException("Invalid sort direction: $direction")
-        }
-
-        return field to direction
     }
 }

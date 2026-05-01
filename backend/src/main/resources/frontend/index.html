@@ -10,13 +10,53 @@
 <div class="container">
     <h1>Creator Content Hub</h1>
 
-    <div class="search-box">
-        <input id="searchInput" placeholder="Buscar jobs..." />
-        <button onclick="search()">Buscar</button>
+    <!-- INGEST -->
+    <div class="ingest-box">
+
+        <input id="urlInput" class="input-url" placeholder="Cole a URL do vídeo (YouTube)" />
+
+        <button id="ingestBtn" class="btn-primary" onclick="ingest()">
+            Processar
+        </button>
+
+        <button class="btn-danger" onclick="stopPolling()">
+            Parar Processamento
+        </button>
+
     </div>
 
+    <!-- STATUS DO INGEST -->
+    <div id="ingestStatus"></div>
+
+    <!-- BUSCA -->
+    <div class="search-box">
+
+        <input id="searchInput" placeholder="Buscar jobs..." />
+
+        <button class="btn-secondary" onclick="search()">Buscar</button>
+
+        <button class="btn-primary" onclick="loadJobs()">Carregar Jobs</button>
+
+        <button class="btn-danger" onclick="stopPolling()">Parar Atualização</button>
+
+        <select id="statusFilter" class="control">
+            <option value="">Todos</option>
+            <option value="DONE">Concluído</option>
+            <option value="PROCESSING">Processando</option>
+            <option value="FAILED">Falhou</option>
+        </select>
+
+        <select id="sortOrder" class="control">
+            <option value="desc">Mais recentes</option>
+            <option value="asc">Mais antigos</option>
+        </select>
+
+    </div>
+
+    <!-- STATUS GERAL -->
     <div id="status"></div>
 
+    <!-- RESULTADOS -->
     <div class="content">
         <div id="results" class="results"></div>
         <div id="details" class="details"></div>

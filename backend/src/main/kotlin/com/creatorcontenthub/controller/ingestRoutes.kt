@@ -3,6 +3,7 @@ package com.creatorcontenthub.controller
 import com.creatorcontenthub.application.dto.IngestStatusResponse
 import com.creatorcontenthub.application.dto.IngestYoutubeRequest
 import com.creatorcontenthub.application.port.JobRepository
+import com.creatorcontenthub.application.usecase.CancelJobUseCase
 import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
 import com.creatorcontenthub.application.usecase.ListJobsUseCase
 import com.creatorcontenthub.domain.exception.TooManyRequestsException
@@ -12,12 +13,14 @@ import com.creatorcontenthub.infrastructure.http.requestId
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
 import io.ktor.server.request.*
+import io.ktor.server.response.respond
 import io.ktor.server.routing.*
 
 fun Route.ingestRoutes(
     useCase: IngestYoutubeUseCase,
     jobRepository: JobRepository,
-    listJobsUseCase: ListJobsUseCase
+    listJobsUseCase: ListJobsUseCase,
+    cancelJobUseCase: CancelJobUseCase
 ) {
 
     post("/ingest/youtube") {
@@ -57,8 +60,23 @@ fun Route.ingestRoutes(
                 ex.message ?: "Invalid input"
             )
 
+        } catch (ex: IllegalArgumentException) {
+
+            call.respondError(
+                HttpStatusCode.BadRequest,
+                ex.message ?: "Invalid configuration"
+            )
+
+        } catch (ex: TooManyRequestsException) {
+
+            call.respondError(
+                HttpStatusCode.TooManyRequests,
+                "System is overloaded, try again later"
+            )
+
         } catch (ex: Exception) {
 
+            ex.printStackTrace()
             call.respondError(
                 HttpStatusCode.InternalServerError,
                 "Failed to start ingestion"
@@ -102,6 +120,7 @@ fun Route.ingestRoutes(
 
         val status = params["status"]
         val sort = params["sort"]
+        val order = params["order"]
 
         val limitRaw = params["limit"]
         val offsetRaw = params["offset"]
@@ -140,6 +159,7 @@ fun Route.ingestRoutes(
                 from = from,
                 to = to,
                 sort = sort,
+                order = order,
                 limit = limit,
                 offset = offset
             )
@@ -158,6 +178,44 @@ fun Route.ingestRoutes(
             call.respondError(
                 HttpStatusCode.InternalServerError,
                 "Failed to list jobs"
+            )
+        }
+    }
+
+    post("/jobs/{jobId}/cancel") {
+
+        val jobId = call.parameters["jobId"]
+
+        if (jobId.isNullOrBlank()) {
+            call.respondError(HttpStatusCode.BadRequest, "Invalid jobId")
+            return@post
+        }
+
+        try {
+
+            cancelJobUseCase.execute(jobId)
+
+            call.respondSuccess(mapOf("jobId" to jobId, "status" to "CANCELED"))
+
+        } catch (ex: IllegalArgumentException) {
+
+            call.respondError(
+                HttpStatusCode.NotFound,
+                ex.message ?: "Job not found"
+            )
+
+        } catch (ex: IllegalStateException) {
+
+            call.respondError(
+                HttpStatusCode.Conflict,
+                ex.message ?: "Cannot cancel job"
+            )
+
+        } catch (ex: Exception) {
+
+            call.respondError(
+                HttpStatusCode.InternalServerError,
+                "Failed to cancel job"
             )
         }
     }
