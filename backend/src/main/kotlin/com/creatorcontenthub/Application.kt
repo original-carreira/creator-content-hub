@@ -1,6 +1,7 @@
 package com.creatorcontenthub
 
 import com.creatorcontenthub.application.port.JobRepository
+import com.creatorcontenthub.application.usecase.CancelJobUseCase
 import com.creatorcontenthub.controller.healthRoutes
 import com.creatorcontenthub.controller.textRoutes
 import com.creatorcontenthub.controller.exportRoutes
@@ -28,9 +29,11 @@ import com.creatorcontenthub.infrastructure.adapter.PostgresJobRepository
 import com.creatorcontenthub.infrastructure.adapter.PostgresJobSearchRepository
 import com.creatorcontenthub.infrastructure.adapter.PythonTextProcessorAdapter
 import com.creatorcontenthub.infrastructure.adapter.TxtExporterAdapter
+import com.creatorcontenthub.infrastructure.cleanup.FileCleanupService
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
 import com.creatorcontenthub.infrastructure.concurrency.SemaphoreConcurrencyController
 import com.creatorcontenthub.infrastructure.config.DataSourceFactory
+import com.creatorcontenthub.infrastructure.config.IngestionTimeoutConfig
 import com.creatorcontenthub.infrastructure.metrics.HikariMetrics
 import com.creatorcontenthub.infrastructure.metrics.JvmMetricsConfig
 import com.creatorcontenthub.infrastructure.metrics.PrometheusRegistry
@@ -53,6 +56,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import java.io.File
 
 
 private val log = LoggerFactory.getLogger("JobCleanupScheduler")
@@ -163,18 +167,32 @@ fun Application.module() {
 
     val outputDir = System.getenv("OUTPUT_DIR")
         ?: environment.config.propertyOrNull("app.outputDir")?.getString()
-        ?: "data"
+        ?: "C:\\creator-content-hub-data"
+
+    File(outputDir).mkdirs()
+    File("$outputDir/audio").mkdirs()
+    File("$outputDir/transcription").mkdirs()
+    File("$outputDir/temp").mkdirs()
 
     val videoIngestionAdapter = YtDlpVideoIngestionAdapter(
         configuredPath = ytDlpPath,
-        outputDir = outputDir
+        outputDir = outputDir,
+        timeoutConfig = IngestionTimeoutConfig(),
+        jobRepository = jobRepository
     )
+
+    val cleanupService = FileCleanupService(outputDir)
+    cleanupService.start()
 
     val whisperPath = environment.config
         .propertyOrNull("whisper.path")
         ?.getString()
 
-    val transcriptionAdapter = WhisperTranscriptionAdapter(whisperPath)
+    val transcriptionAdapter = WhisperTranscriptionAdapter(
+        configuredPath = whisperPath,
+        timeoutMinutes = 10,
+        jobRepository = jobRepository
+    )
     val summarizationAdapter = FallbackSummarizationAdapter()
 
     // =============================
@@ -200,6 +218,8 @@ fun Application.module() {
         com.creatorcontenthub.infrastructure.metrics.IngestionMicrometerMetrics()
     )
 
+    val cancelJobUseCase = CancelJobUseCase(jobRepository)
+
     environment.monitor.subscribe(ApplicationStopped) {
         log.info("Shutting down application scope...")
         applicationScope.cancel()
@@ -218,7 +238,8 @@ fun Application.module() {
         hikariMetrics,
         dataSource,
         listJobsUseCase,
-        searchJobsUseCase
+        searchJobsUseCase,
+        cancelJobUseCase
     )
 }
 
@@ -280,6 +301,7 @@ fun Application.configureRouting(
     dataSource: HikariDataSource,
     listJobsUseCase: ListJobsUseCase,
     searchJobsUseCase: SearchJobsUseCase,
+    cancelJobUseCase: CancelJobUseCase
 
 ) {
     routing {
@@ -293,7 +315,8 @@ fun Application.configureRouting(
         ingestRoutes(
             ingestYoutubeUseCase,
             jobRepository,
-            listJobsUseCase
+            listJobsUseCase,
+            cancelJobUseCase
         )
 
         metricsRoutes(

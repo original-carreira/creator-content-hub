@@ -14,17 +14,9 @@ class PostgresJobRepository(
     override fun create(jobId: String, job: JobState) {
         val sql = """
             INSERT INTO jobs (
-                job_id,
-                status,
-                created_at,
-                started_at,
-                finished_at,
-                transcription,
-                transcription_completed_at,
-                summary,
-                summary_completed_at,
-                error_type,
-                error_message
+                job_id, status, created_at, started_at, finished_at,
+                transcription, transcription_completed_at, summary, summary_completed_at,
+                error_type, error_message
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()
 
@@ -35,25 +27,11 @@ class PostgresJobRepository(
                 stmt.setLong(3, job.createdAt)
                 stmt.setLong(4, job.startedAt)
 
-                if (job.finishedAt != null)
-                    stmt.setLong(5, job.finishedAt)
-                else
-                    stmt.setNull(5, Types.BIGINT)
-
+                stmt.setLongOrNull(5, job.finishedAt)
                 stmt.setString(6, job.transcription)
-
-                if (job.transcriptionCompletedAt != null)
-                    stmt.setLong(7, job.transcriptionCompletedAt)
-                else
-                    stmt.setNull(7, Types.BIGINT)
-
+                stmt.setLongOrNull(7, job.transcriptionCompletedAt)
                 stmt.setString(8, job.summary)
-
-                if (job.summaryCompletedAt != null)
-                    stmt.setLong(9, job.summaryCompletedAt)
-                else
-                    stmt.setNull(9, Types.BIGINT)
-
+                stmt.setLongOrNull(9, job.summaryCompletedAt)
                 stmt.setString(10, job.errorType?.name)
                 stmt.setString(11, job.errorMessage)
 
@@ -79,29 +57,13 @@ class PostgresJobRepository(
         dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
                 stmt.setString(1, job.status.name)
-
-                if (job.finishedAt != null)
-                    stmt.setLong(2, job.finishedAt)
-                else
-                    stmt.setNull(2, Types.BIGINT)
-
+                stmt.setLongOrNull(2, job.finishedAt)
                 stmt.setString(3, job.transcription)
-
-                if (job.transcriptionCompletedAt != null)
-                    stmt.setLong(4, job.transcriptionCompletedAt)
-                else
-                    stmt.setNull(4, Types.BIGINT)
-
+                stmt.setLongOrNull(4, job.transcriptionCompletedAt)
                 stmt.setString(5, job.summary)
-
-                if (job.summaryCompletedAt != null)
-                    stmt.setLong(6, job.summaryCompletedAt)
-                else
-                    stmt.setNull(6, Types.BIGINT)
-
+                stmt.setLongOrNull(6, job.summaryCompletedAt)
                 stmt.setString(7, job.errorType?.name)
                 stmt.setString(8, job.errorMessage)
-
                 stmt.setString(9, jobId)
 
                 stmt.executeUpdate()
@@ -120,7 +82,11 @@ class PostgresJobRepository(
                     if (!rs.next()) return null
 
                     val createdAt = rs.getLong("created_at")
-                    val finishedAtDb = rs.getLongOrNull("finished_at")
+                    val startedAt = rs.getLong("started_at")
+
+                    val finishedAtDb = (rs.getObject("finished_at") as? Number)?.toLong()
+                    val transcriptionCompletedAtDb = (rs.getObject("transcription_completed_at") as? Number)?.toLong()
+                    val summaryCompletedAtDb = (rs.getObject("summary_completed_at") as? Number)?.toLong()
 
                     val status = runCatching {
                         JobStatus.valueOf(rs.getString("status"))
@@ -128,12 +94,20 @@ class PostgresJobRepository(
                         JobStatus.FAILED
                     }
 
-                    // 🔥 REGRA DE CORREÇÃO
+                    // Regra de Correção Original mantida
                     val safeFinishedAt =
                         if ((status == JobStatus.DONE || status == JobStatus.FAILED) && finishedAtDb == null)
                             createdAt
                         else
                             finishedAtDb
+
+                    // VALIDACAO DE INTEGRIDADE SOLICITADA
+                    // Verifica se o estado é final (isFinal) e se o finishedAt ainda está nulo após o patch
+                    if (status.isFinal() && safeFinishedAt == null) {
+                        throw IllegalStateException(
+                            "Invalid persisted state: jobId=$jobId status=$status missing finishedAt"
+                        )
+                    }
 
                     val transcriptionDb = rs.getString("transcription")
                     val safeTranscription =
@@ -144,41 +118,80 @@ class PostgresJobRepository(
 
                     val safeTranscriptionCompletedAt =
                         if (!safeTranscription.isNullOrBlank())
-                            createdAt
+                            transcriptionCompletedAtDb ?: createdAt
                         else
                             null
 
                     val summaryDb = rs.getString("summary")
-
                     val safeSummaryCompletedAt =
                         if (!summaryDb.isNullOrBlank())
-                            createdAt
+                            summaryCompletedAtDb ?: createdAt
                         else
                             null
+
+                    val rawErrorType = rs.getString("error_type")
+                    val safeErrorType =
+                        if (status == JobStatus.FAILED) {
+                            rawErrorType?.let {
+                                runCatching { ErrorType.valueOf(it) }.getOrNull()
+                            } ?: ErrorType.UNKNOWN
+                        } else null
+
+                    val errorMessage = rs.getString("error_message")
 
                     return JobState(
                         status = status,
                         createdAt = createdAt,
-                        startedAt = createdAt,
+                        startedAt = startedAt,
                         finishedAt = safeFinishedAt,
-
                         transcription = safeTranscription,
                         transcriptionCompletedAt = safeTranscriptionCompletedAt,
-
                         summary = summaryDb,
                         summaryCompletedAt = safeSummaryCompletedAt,
-
-                        errorType = null,
-                        errorMessage = null
+                        errorType = safeErrorType,
+                        errorMessage = errorMessage
                     )
                 }
             }
         }
     }
 
-    // Helper seguro para BIGINT nullable
-    private fun java.sql.ResultSet.getLongOrNull(column: String): Long? {
-        val value = this.getLong(column)
-        return if (this.wasNull()) null else value
+    override fun updateStatus(jobId: String, status: JobStatus) {
+        val sql = "UPDATE jobs SET status = ? WHERE job_id = ?"
+
+        dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setString(1, status.name)
+                stmt.setString(2, jobId)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    override fun isCanceled(jobId: String): Boolean {
+        val sql = "SELECT status FROM jobs WHERE job_id = ?"
+
+        dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setString(1, jobId)
+
+                stmt.executeQuery().use { rs ->
+                    if (!rs.next()) return false
+                    return rs.getString("status") == "CANCELED"
+                }
+            }
+        }
+    }
+
+    // Extensão para identificar estados finais (reaproveitando a lógica do domínio)
+    private fun JobStatus.isFinal(): Boolean {
+        return this == JobStatus.DONE ||
+                this == JobStatus.FAILED ||
+                this == JobStatus.CANCELED
+    }
+
+    private fun java.sql.PreparedStatement.setLongOrNull(index: Int, value: Long?) {
+        if (value != null) this.setLong(index, value)
+        else this.setNull(index, Types.BIGINT)
     }
 }

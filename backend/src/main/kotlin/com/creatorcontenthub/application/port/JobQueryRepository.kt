@@ -9,7 +9,8 @@ interface JobQueryRepository {
         status: JobStatus?,
         from: Long?,
         to: Long?,
-        sortDirection: String,
+        sort: String?,
+        order: String?,
         limit: Int,
         offset: Int
     ): List<JobListItemView>

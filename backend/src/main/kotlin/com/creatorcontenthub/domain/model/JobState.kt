@@ -38,13 +38,13 @@ data class JobState(
             }
         }
 
-        if (status == JobStatus.DONE || status == JobStatus.FAILED) {
+        if (status.isFinal()) {
             require(finishedAt != null) {
                 "Final states must contain finishedAt"
             }
         }
 
-        if (status != JobStatus.DONE && status != JobStatus.FAILED) {
+        if (!status.isFinal()) {
             require(finishedAt == null) {
                 "Non-final states cannot contain finishedAt"
             }
@@ -69,6 +69,17 @@ data class JobState(
 
             require(summary == null) {
                 "FAILED state cannot contain summary"
+            }
+        }
+
+        // CANCELED não pode ter dados derivados
+        if (status == JobStatus.CANCELED) {
+            require(transcription == null) {
+                "CANCELED state cannot contain transcription"
+            }
+
+            require(summary == null) {
+                "CANCELED state cannot contain summary"
             }
         }
 
@@ -160,5 +171,24 @@ data class JobState(
             summary = null,
             summaryCompletedAt = null
         )
+    }
+
+    fun markCanceled(finishedAt: Long): JobState {
+        return copy(
+            status = JobStatus.CANCELED,
+            finishedAt = finishedAt,
+            errorType = null,
+            errorMessage = "Canceled by user",
+            transcription = null,
+            transcriptionCompletedAt = null,
+            summary = null,
+            summaryCompletedAt = null
+        )
+    }
+
+    private fun JobStatus.isFinal(): Boolean {
+        return this == JobStatus.DONE ||
+                this == JobStatus.FAILED ||
+                this == JobStatus.CANCELED
     }
 }

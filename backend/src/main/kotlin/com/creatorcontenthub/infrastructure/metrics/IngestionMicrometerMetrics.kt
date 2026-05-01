@@ -1,5 +1,6 @@
 package com.creatorcontenthub.infrastructure.metrics
 
+import com.creatorcontenthub.domain.model.ErrorType
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.Timer
 import java.util.concurrent.TimeUnit
@@ -8,15 +9,11 @@ class IngestionMicrometerMetrics {
 
     private val registry = PrometheusRegistry.registry
 
-    // 🔢 Counters
+    // 🔢 Counters Fixos
     private val jobsStarted = Counter.builder("ingestion_jobs_started_total")
         .register(registry)
 
     private val jobsSucceeded = Counter.builder("ingestion_jobs_succeeded_total")
-        .register(registry)
-
-    private val jobsFailed = Counter.builder("ingestion_jobs_failed_total")
-        .tag("error_type", "unknown")
         .register(registry)
 
     // ⏱ Timers
@@ -41,9 +38,19 @@ class IngestionMicrometerMetrics {
 
     fun incrementSucceeded() = jobsSucceeded.increment()
 
+    // Ajustado para aceitar ErrorType do domínio e evitar erro no UseCase
+    fun incrementFailed(errorType: ErrorType) {
+        Counter.builder("ingestion_jobs_failed_total")
+            .description("Total de falhas na ingestão por tipo de erro")
+            .tag("error_type", errorType.name.lowercase())
+            .register(registry)
+            .increment()
+    }
+
+    // Mantido para compatibilidade caso precise passar String diretamente
     fun incrementFailed(errorType: String) {
         Counter.builder("ingestion_jobs_failed_total")
-            .tag("error_type", errorType)
+            .tag("error_type", errorType.lowercase())
             .register(registry)
             .increment()
     }
