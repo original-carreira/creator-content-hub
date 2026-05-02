@@ -20,6 +20,7 @@ class InMemoryJobRepository : JobRepository {
     override fun findById(jobId: String): JobState? {
         return store[jobId]
     }
+
     override fun updateStatus(jobId: String, status: JobStatus) {
         val current = store[jobId] ?: return
 
@@ -31,5 +32,23 @@ class InMemoryJobRepository : JobRepository {
 
     override fun isCanceled(jobId: String): Boolean {
         return store[jobId]?.status == JobStatus.CANCELED
+    }
+
+    override fun markCanceledIfNotFinal(jobId: String): Boolean {
+
+        val job = store[jobId] ?: return false
+
+        if (job.status.isFinal()) {
+            return false
+        }
+
+        val updated = job.copy(
+            status = JobStatus.CANCELED,
+            finishedAt = System.currentTimeMillis()
+        )
+
+        store[jobId] = updated
+
+        return true
     }
 }

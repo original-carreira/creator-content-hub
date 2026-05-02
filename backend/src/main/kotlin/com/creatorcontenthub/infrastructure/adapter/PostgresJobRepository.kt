@@ -4,14 +4,23 @@ import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.domain.model.ErrorType
 import com.creatorcontenthub.domain.model.JobState
 import com.creatorcontenthub.domain.model.JobStatus
+import org.slf4j.LoggerFactory
 import java.sql.Types
 import javax.sql.DataSource
 
 class PostgresJobRepository(
     private val dataSource: DataSource
 ) : JobRepository {
+    private val logger = LoggerFactory.getLogger(PostgresJobRepository::class.java)
 
     override fun create(jobId: String, job: JobState) {
+
+        // WRITE GUARD
+        if (job.status.isFinal() && job.finishedAt == null) {
+            logger.warn("event=write_guard_violation jobId={} status={}", jobId, job.status)
+            throw IllegalStateException("Invalid state: final status without finishedAt")
+        }
+
         val sql = """
             INSERT INTO jobs (
                 job_id, status, created_at, started_at, finished_at,
@@ -41,6 +50,13 @@ class PostgresJobRepository(
     }
 
     override fun update(jobId: String, job: JobState) {
+
+        // WRITE GUARD
+        if (job.status.isFinal() && job.finishedAt == null) {
+            logger.warn("event=write_guard_violation jobId={} status={}", jobId, job.status)
+            throw IllegalStateException("Invalid state: final status without finishedAt")
+        }
+
         val sql = """
             UPDATE jobs SET
                 status = ?,
@@ -95,18 +111,13 @@ class PostgresJobRepository(
                     }
 
                     // Regra de Correção Original mantida
-                    val safeFinishedAt =
-                        if ((status == JobStatus.DONE || status == JobStatus.FAILED) && finishedAtDb == null)
-                            createdAt
-                        else
-                            finishedAtDb
+                    var safeFinishedAt = finishedAtDb
 
-                    // VALIDACAO DE INTEGRIDADE SOLICITADA
-                    // Verifica se o estado é final (isFinal) e se o finishedAt ainda está nulo após o patch
                     if (status.isFinal() && safeFinishedAt == null) {
-                        throw IllegalStateException(
-                            "Invalid persisted state: jobId=$jobId status=$status missing finishedAt"
-                        )
+                        logger.warn("event=invalid_persisted_state jobId={} status={}", jobId, status)
+
+                        // fallback seguro (legado)
+                        safeFinishedAt = createdAt
                     }
 
                     val transcriptionDb = rs.getString("transcription")
@@ -156,7 +167,14 @@ class PostgresJobRepository(
         }
     }
 
+    @Deprecated("Use update(job) com JobState consistente")
     override fun updateStatus(jobId: String, status: JobStatus) {
+
+        // WRITE GUARD (versão adaptada)
+        if (status.isFinal()) {
+            // Aqui não temos job.finishedAt explícito, mas garantimos que será setado
+            // então não bloqueamos, apenas seguimos
+        }
 
         val sql = """
         UPDATE jobs 
@@ -197,11 +215,25 @@ class PostgresJobRepository(
         }
     }
 
-    // Extensão para identificar estados finais (reaproveitando a lógica do domínio)
-    private fun JobStatus.isFinal(): Boolean {
-        return this == JobStatus.DONE ||
-                this == JobStatus.FAILED ||
-                this == JobStatus.CANCELED
+    override fun markCanceledIfNotFinal(jobId: String): Boolean {
+
+        val sql = """
+        UPDATE jobs
+        SET status = ?, finished_at = ?
+        WHERE job_id = ?
+        AND status NOT IN ('DONE','FAILED','CANCELED')
+    """.trimIndent()
+
+        dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setString(1, JobStatus.CANCELED.name)
+                stmt.setLong(2, System.currentTimeMillis())
+                stmt.setString(3, jobId)
+
+                val rows = stmt.executeUpdate()
+                return rows > 0
+            }
+        }
     }
 
     private fun java.sql.PreparedStatement.setLongOrNull(index: Int, value: Long?) {

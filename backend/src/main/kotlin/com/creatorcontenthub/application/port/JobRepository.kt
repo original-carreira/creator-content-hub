@@ -14,4 +14,6 @@ interface JobRepository {
     fun updateStatus(jobId: String, status: JobStatus)
 
     fun isCanceled(jobId: String): Boolean
+
+    fun markCanceledIfNotFinal(jobId: String): Boolean
 }
