@@ -37,6 +37,8 @@ class IngestionMicrometerMetrics {
         .publishPercentileHistogram()
         .register(registry)
 
+    private val stageTimers = mutableMapOf<String, Timer>()
+
     // 🔹 Counters API
     fun incrementStarted() = jobsStarted.increment()
 
@@ -79,10 +81,13 @@ class IngestionMicrometerMetrics {
     }
 
     fun recordStage(stage: String, durationMs: Long) {
-        Timer.builder("ingestion_stage_duration")
-            .tag("stage", stage)
-            .publishPercentileHistogram()
-            .register(registry)
-            .record(durationMs, TimeUnit.MILLISECONDS)
+        val timer = stageTimers.getOrPut(stage) {
+            Timer.builder("ingestion_stage_duration")
+                .tag("stage", stage)
+                .publishPercentileHistogram()
+                .register(registry)
+        }
+
+        timer.record(durationMs, TimeUnit.MILLISECONDS)
     }
 }

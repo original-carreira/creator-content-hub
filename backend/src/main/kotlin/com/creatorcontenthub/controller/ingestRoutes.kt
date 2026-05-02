@@ -10,7 +10,6 @@ import com.creatorcontenthub.domain.exception.TooManyRequestsException
 import com.creatorcontenthub.infrastructure.http.respondError
 import com.creatorcontenthub.infrastructure.http.respondSuccess
 import com.creatorcontenthub.infrastructure.http.requestId
-import com.creatorcontenthub.infrastructure.logging.StructuredLogger.logger
 import com.creatorcontenthub.infrastructure.logging.StructuredLogger
 import org.slf4j.LoggerFactory
 import io.ktor.http.HttpStatusCode

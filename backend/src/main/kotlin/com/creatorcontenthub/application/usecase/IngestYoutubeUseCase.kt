@@ -133,7 +133,7 @@ class IngestYoutubeUseCase(
             // CORREÇÃO 1: extrair STRING do resultado
             val summaryText = summaryResult.summary
 
-            val currentJob = jobRepository.findById(jobId)
+            currentJob = jobRepository.findById(jobId)
                 ?: throw IllegalStateException("Job not found")
 
             val finalState = currentJob.markDone(
@@ -193,7 +193,16 @@ class IngestYoutubeUseCase(
             val failedAt = System.currentTimeMillis()
             val totalDuration = failedAt - jobStartTime
 
-            val currentJob = jobRepository.findById(jobId)
+            val job = jobRepository.findById(jobId)
+
+            if (job != null) {
+                val failedState = job.markFailed(
+                    errorType = errorType,
+                    errorMessage = ex.message ?: "unknown",
+                    finishedAt = failedAt
+                )
+                jobRepository.update(jobId, failedState)
+            }
             if (currentJob != null) {
                 val failedState = currentJob.markFailed(
                     errorType = errorType,
