@@ -8,13 +8,10 @@ class CancelJobUseCase(
 ) {
     fun execute(jobId: String) {
 
-        val job = repository.findById(jobId)
-            ?: throw IllegalArgumentException("Job not found")
+        val updated = repository.markCanceledIfNotFinal(jobId)
 
-        if (job.status == JobStatus.DONE || job.status == JobStatus.FAILED) {
-            throw IllegalStateException("Job already finished")
+        if (!updated) {
+            throw IllegalStateException("Job already finished or not found")
         }
-
-        repository.updateStatus(jobId, JobStatus.CANCELED)
     }
 }

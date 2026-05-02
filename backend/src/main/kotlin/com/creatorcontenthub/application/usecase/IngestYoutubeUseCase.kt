@@ -76,11 +76,9 @@ class IngestYoutubeUseCase(
         val jobStartTime = System.currentTimeMillis()
         var currentStage = "unknown"
 
-        var currentJob = jobRepository.findById(jobId)
-            ?: throw IllegalStateException("Job not found")
+        var currentJob = JobState.started(jobStartTime)
 
         try {
-
             // ---------------- DOWNLOAD ----------------
             currentStage = "download"
             checkCanceled(jobId, currentStage, requestId, jobStartTime)
@@ -133,15 +131,13 @@ class IngestYoutubeUseCase(
             // CORREÇÃO 1: extrair STRING do resultado
             val summaryText = summaryResult.summary
 
-            currentJob = jobRepository.findById(jobId)
-                ?: throw IllegalStateException("Job not found")
-
             val finalState = currentJob.markDone(
                 transcription = transcriptionResult.text,
                 summary = summaryText,
                 finishedAt = System.currentTimeMillis()
             )
 
+            currentJob = finalState
             jobRepository.update(jobId, finalState)
 
             val totalDuration = System.currentTimeMillis() - jobStartTime
@@ -193,16 +189,14 @@ class IngestYoutubeUseCase(
             val failedAt = System.currentTimeMillis()
             val totalDuration = failedAt - jobStartTime
 
-            val job = jobRepository.findById(jobId)
+            val failedState = currentJob.markFailed(
+                errorType = errorType,
+                errorMessage = ex.message ?: "unknown",
+                finishedAt = failedAt
+            )
 
-            if (job != null) {
-                val failedState = job.markFailed(
-                    errorType = errorType,
-                    errorMessage = ex.message ?: "unknown",
-                    finishedAt = failedAt
-                )
-                jobRepository.update(jobId, failedState)
-            }
+            currentJob = failedState
+            jobRepository.update(jobId, failedState)
 
             StructuredLogger.log(
                 logger = logger,
