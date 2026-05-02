@@ -3,6 +3,7 @@ package com.creatorcontenthub.infrastructure.metrics
 import com.creatorcontenthub.domain.model.ErrorType
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.Timer
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 class IngestionMicrometerMetrics {
@@ -14,6 +15,10 @@ class IngestionMicrometerMetrics {
         .register(registry)
 
     private val jobsSucceeded = Counter.builder("ingestion_jobs_succeeded_total")
+        .register(registry)
+
+    private val jobsCanceled = Counter.builder("ingestion_jobs_canceled_total")
+        .description("Total de jobs cancelados")
         .register(registry)
 
     // ⏱ Timers
@@ -33,10 +38,14 @@ class IngestionMicrometerMetrics {
         .publishPercentileHistogram()
         .register(registry)
 
+    private val stageTimers = ConcurrentHashMap<String, Timer>()
+
     // 🔹 Counters API
     fun incrementStarted() = jobsStarted.increment()
 
     fun incrementSucceeded() = jobsSucceeded.increment()
+
+    fun incrementCanceled() = jobsCanceled.increment()
 
     // Ajustado para aceitar ErrorType do domínio e evitar erro no UseCase
     fun incrementFailed(errorType: ErrorType) {
@@ -70,5 +79,16 @@ class IngestionMicrometerMetrics {
 
     fun recordTotal(durationMs: Long) {
         totalTimer.record(durationMs, TimeUnit.MILLISECONDS)
+    }
+
+    fun recordStage(stage: String, durationMs: Long) {
+        val timer = stageTimers.getOrPut(stage) {
+            Timer.builder("ingestion_stage_duration")
+                .tag("stage", stage)
+                .publishPercentileHistogram()
+                .register(registry)
+        }
+
+        timer.record(durationMs, TimeUnit.MILLISECONDS)
     }
 }

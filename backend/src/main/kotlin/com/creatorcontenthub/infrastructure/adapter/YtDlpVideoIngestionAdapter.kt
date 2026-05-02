@@ -8,6 +8,7 @@ import com.creatorcontenthub.domain.model.ErrorClassifier
 import com.creatorcontenthub.domain.model.ErrorType
 import com.creatorcontenthub.domain.model.JobStatus
 import com.creatorcontenthub.infrastructure.config.IngestionTimeoutConfig
+import com.creatorcontenthub.infrastructure.logging.StructuredLogger
 import com.creatorcontenthub.infrastructure.resilience.RetryUtil
 import org.slf4j.LoggerFactory
 import java.io.BufferedReader
@@ -122,8 +123,27 @@ class YtDlpVideoIngestionAdapter(
                     val job = jobRepository.findById(jobId)
 
                     if (job?.status == JobStatus.CANCELED) {
+
+                        StructuredLogger.log(
+                            logger = logger,
+                            event = "job_cancel_detected",
+                            jobId = jobId,
+                            requestId = "internal",
+                            status = "CANCELED",
+                            extra = mapOf("stage" to "download")
+                        )
+
                         activeProcess.destroyForcibly()
-                        logger.info("event=download_canceled jobId={}", jobId)
+
+                        StructuredLogger.log(
+                            logger = logger,
+                            event = "process_killed",
+                            jobId = jobId,
+                            requestId = "internal",
+                            status = "CANCELED",
+                            extra = mapOf("stage" to "download", "process" to "yt-dlp")
+                        )
+
                         throw JobCanceledException()
                     }
 

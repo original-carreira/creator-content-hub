@@ -6,6 +6,7 @@ import com.creatorcontenthub.application.port.TranscriptionPort
 import com.creatorcontenthub.domain.exception.JobCanceledException
 import com.creatorcontenthub.domain.exception.TranscriptionTimeoutException
 import com.creatorcontenthub.domain.model.JobStatus
+import com.creatorcontenthub.infrastructure.logging.StructuredLogger
 import com.creatorcontenthub.infrastructure.resilience.WhisperConcurrencyLimiter
 import org.slf4j.LoggerFactory
 import java.io.BufferedReader
@@ -103,7 +104,7 @@ class WhisperTranscriptionAdapter(
 
             val timeoutMs = TimeUnit.MINUTES.toMillis(timeoutMinutes)
 
-            // 🔥 LOOP CORRETO (substitui isAlive)
+            // LOOP CORRETO (substitui isAlive)
             while (true) {
 
                 val finished = process.waitFor(1, TimeUnit.SECONDS)
@@ -113,8 +114,29 @@ class WhisperTranscriptionAdapter(
                 val job = jobRepository.findById(jobId)
 
                 if (job?.status == JobStatus.CANCELED) {
+                    StructuredLogger.log(
+                        logger = logger,
+                        event = "job_cancel_detected",
+                        jobId = jobId,
+                        requestId = "internal",
+                        status = "CANCELED",
+                        extra = mapOf("stage" to "transcription")
+                    )
+
                     process.destroyForcibly()
-                    logger.info("event=transcription_canceled jobId={}", jobId)
+
+                    StructuredLogger.log(
+                        logger = logger,
+                        event = "process_killed",
+                        jobId = jobId,
+                        requestId = "internal",
+                        status = "CANCELED",
+                        extra = mapOf(
+                            "stage" to "transcription",
+                            "process" to "whisper"
+                        )
+                    )
+
                     throw JobCanceledException()
                 }
 
@@ -127,7 +149,7 @@ class WhisperTranscriptionAdapter(
                 }
             }
 
-            // 🔥 garante leitura completa (sem timeout artificial)
+            // garante leitura completa (sem timeout artificial)
             readerThread.join()
 
             logger.info(
