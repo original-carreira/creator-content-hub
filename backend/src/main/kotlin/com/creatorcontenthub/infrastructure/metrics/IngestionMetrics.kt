@@ -11,6 +11,7 @@ class IngestionMetrics {
     private val jobsStarted = AtomicLong(0)
     private val jobsSucceeded = AtomicLong(0)
     private val jobsFailed = AtomicLong(0)
+    private val jobsCanceled = AtomicLong(0)
     private val totalProcessingTimeMs = AtomicLong(0)
 
     private val timeoutFailures = AtomicLong(0)
@@ -39,6 +40,10 @@ class IngestionMetrics {
 
     fun incrementSucceeded() {
         jobsSucceeded.incrementAndGet()
+    }
+
+    fun incrementCanceled() {
+        jobsCanceled.incrementAndGet()
     }
 
     fun incrementFailed(errorType: ErrorType) {

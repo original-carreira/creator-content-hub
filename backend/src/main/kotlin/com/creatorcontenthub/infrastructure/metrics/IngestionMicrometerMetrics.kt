@@ -16,6 +16,10 @@ class IngestionMicrometerMetrics {
     private val jobsSucceeded = Counter.builder("ingestion_jobs_succeeded_total")
         .register(registry)
 
+    private val jobsCanceled = Counter.builder("ingestion_jobs_canceled_total")
+        .description("Total de jobs cancelados")
+        .register(registry)
+
     // ⏱ Timers
     private val downloadTimer = Timer.builder("ingestion_download_duration")
         .publishPercentileHistogram()
@@ -37,6 +41,8 @@ class IngestionMicrometerMetrics {
     fun incrementStarted() = jobsStarted.increment()
 
     fun incrementSucceeded() = jobsSucceeded.increment()
+
+    fun incrementCanceled() = jobsCanceled.increment()
 
     // Ajustado para aceitar ErrorType do domínio e evitar erro no UseCase
     fun incrementFailed(errorType: ErrorType) {

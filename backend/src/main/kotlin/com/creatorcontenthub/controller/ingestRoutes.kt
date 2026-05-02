@@ -10,6 +10,9 @@ import com.creatorcontenthub.domain.exception.TooManyRequestsException
 import com.creatorcontenthub.infrastructure.http.respondError
 import com.creatorcontenthub.infrastructure.http.respondSuccess
 import com.creatorcontenthub.infrastructure.http.requestId
+import com.creatorcontenthub.infrastructure.logging.StructuredLogger.logger
+import com.creatorcontenthub.infrastructure.logging.StructuredLogger
+import org.slf4j.LoggerFactory
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
 import io.ktor.server.request.*
@@ -22,7 +25,7 @@ fun Route.ingestRoutes(
     listJobsUseCase: ListJobsUseCase,
     cancelJobUseCase: CancelJobUseCase
 ) {
-
+    val logger = LoggerFactory.getLogger("IngestRoutes")
     post("/ingest/youtube") {
 
         val request = try {
@@ -193,7 +196,16 @@ fun Route.ingestRoutes(
 
         try {
 
+            val requestId = call.requestId()
             cancelJobUseCase.execute(jobId)
+
+            StructuredLogger.log(
+                logger = logger,
+                event = "job_cancel_requested",
+                jobId = jobId,
+                requestId = requestId,
+                status = "CANCELED"
+            )
 
             call.respondSuccess(mapOf("jobId" to jobId, "status" to "CANCELED"))
 
