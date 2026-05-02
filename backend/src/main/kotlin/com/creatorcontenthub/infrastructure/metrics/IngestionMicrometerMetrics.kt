@@ -3,6 +3,7 @@ package com.creatorcontenthub.infrastructure.metrics
 import com.creatorcontenthub.domain.model.ErrorType
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.Timer
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 class IngestionMicrometerMetrics {
@@ -37,7 +38,7 @@ class IngestionMicrometerMetrics {
         .publishPercentileHistogram()
         .register(registry)
 
-    private val stageTimers = mutableMapOf<String, Timer>()
+    private val stageTimers = ConcurrentHashMap<String, Timer>()
 
     // 🔹 Counters API
     fun incrementStarted() = jobsStarted.increment()

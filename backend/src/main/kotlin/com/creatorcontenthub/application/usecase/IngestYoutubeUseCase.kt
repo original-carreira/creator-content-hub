@@ -203,14 +203,6 @@ class IngestYoutubeUseCase(
                 )
                 jobRepository.update(jobId, failedState)
             }
-            if (currentJob != null) {
-                val failedState = currentJob.markFailed(
-                    errorType = errorType,
-                    errorMessage = ex.message ?: "unknown",
-                    finishedAt = failedAt
-                )
-                jobRepository.update(jobId, failedState)
-            }
 
             StructuredLogger.log(
                 logger = logger,
