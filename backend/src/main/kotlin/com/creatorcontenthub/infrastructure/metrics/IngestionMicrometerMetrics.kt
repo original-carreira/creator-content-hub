@@ -77,4 +77,12 @@ class IngestionMicrometerMetrics {
     fun recordTotal(durationMs: Long) {
         totalTimer.record(durationMs, TimeUnit.MILLISECONDS)
     }
+
+    fun recordStage(stage: String, durationMs: Long) {
+        Timer.builder("ingestion_stage_duration")
+            .tag("stage", stage)
+            .publishPercentileHistogram()
+            .register(registry)
+            .record(durationMs, TimeUnit.MILLISECONDS)
+    }
 }

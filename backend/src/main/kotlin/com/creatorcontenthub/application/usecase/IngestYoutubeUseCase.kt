@@ -74,7 +74,7 @@ class IngestYoutubeUseCase(
         var audioPath: String? = null
 
         val jobStartTime = System.currentTimeMillis()
-        var currentStage = "initializing"
+        var currentStage = "unknown"
 
         var currentJob = jobRepository.findById(jobId)
             ?: throw IllegalStateException("Job not found")
@@ -94,6 +94,7 @@ class IngestYoutubeUseCase(
             recordStepSuccess("download", jobId, requestId, downloadDuration)
             metrics.recordDownloadTime(downloadDuration)
             micrometer.recordDownload(downloadDuration)
+            micrometer.recordStage("download", downloadDuration)
 
             val audioFile = validateAudioFile(audioPath)
 
@@ -110,6 +111,7 @@ class IngestYoutubeUseCase(
             recordStepSuccess("transcription", jobId, requestId, transcriptionDuration)
             metrics.recordTranscriptionTime(transcriptionDuration)
             micrometer.recordTranscription(transcriptionDuration)
+            micrometer.recordStage("transcription", transcriptionDuration)
 
             // ---------------- SUMMARY ----------------
             val safeText = prepareTextForSummarization(transcriptionResult.text)
@@ -126,6 +128,7 @@ class IngestYoutubeUseCase(
             recordStepSuccess("summary", jobId, requestId, summarizationDuration)
             metrics.recordSummarizationTime(summarizationDuration)
             micrometer.recordSummarization(summarizationDuration)
+            micrometer.recordStage("summary", summarizationDuration)
 
             // CORREÇÃO 1: extrair STRING do resultado
             val summaryText = summaryResult.summary
