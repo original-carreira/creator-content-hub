@@ -5,6 +5,8 @@ import com.creatorcontenthub.application.dto.IngestYoutubeResponse
 import com.creatorcontenthub.application.port.*
 import com.creatorcontenthub.domain.exception.*
 import com.creatorcontenthub.domain.model.*
+import com.creatorcontenthub.infrastructure.exception.ProcessExecutionException
+import com.creatorcontenthub.application.resilience.ErrorClassifier
 import com.creatorcontenthub.infrastructure.logging.StructuredLogger
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
 import com.creatorcontenthub.infrastructure.metrics.IngestionMicrometerMetrics
@@ -184,7 +186,12 @@ class IngestYoutubeUseCase(
         }
         catch (ex: Exception) {
 
-            val errorType = ErrorClassifier.classify(ex)
+            val rootCause = unwrap(ex)
+            val errorType = ErrorClassifier.classify(
+                throwable = rootCause,
+                exitCode = extractExitCode(rootCause),
+                message = rootCause.message
+            )
 
             val failedAt = System.currentTimeMillis()
             val totalDuration = failedAt - jobStartTime
@@ -292,5 +299,17 @@ class IngestYoutubeUseCase(
             status = "RUNNING",
             extra = mapOf("stage" to stage)
         )
+    }
+
+    private fun unwrap(e: Throwable): Throwable {
+        var current = e
+        while (current.cause != null) {
+            current = current.cause!!
+        }
+        return current
+    }
+
+    private fun extractExitCode(e: Throwable): Int? {
+        return if (e is ProcessExecutionException) e.exitCode else null
     }
 }

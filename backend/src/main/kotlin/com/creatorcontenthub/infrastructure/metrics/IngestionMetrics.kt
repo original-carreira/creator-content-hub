@@ -30,6 +30,9 @@ class IngestionMetrics {
     private val retriesByStage = ConcurrentHashMap<String, AtomicLong>()
     private val timeoutsByStage = ConcurrentHashMap<String, AtomicLong>()
 
+    // 🆕 failure por tipo e stage
+    private val failuresByStageAndType = ConcurrentHashMap<String, AtomicLong>()
+
     // ========================
     // JOB METRICS
     // ========================
@@ -100,6 +103,19 @@ class IngestionMetrics {
 
     fun getTimeouts(stage: String): Long =
         timeoutsByStage[stage]?.get() ?: 0
+
+    fun incrementFailureByType(stage: String, errorType: String) {
+        val key = "$stage|$errorType"
+
+        failuresByStageAndType
+            .computeIfAbsent(key) { AtomicLong(0) }
+            .incrementAndGet()
+    }
+
+    fun getFailureByType(stage: String, errorType: String): Long {
+        val key = "$stage|$errorType"
+        return failuresByStageAndType[key]?.get() ?: 0
+    }
 
     // ========================
     // BACKPRESSURE

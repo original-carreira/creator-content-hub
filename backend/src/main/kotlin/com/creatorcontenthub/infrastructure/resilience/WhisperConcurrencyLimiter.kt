@@ -4,14 +4,14 @@ import java.util.concurrent.Semaphore
 
 object WhisperConcurrencyLimiter {
 
-    // 🔒 1 transcription por vez (CPU-bound)
     private val semaphore = Semaphore(1)
 
-    fun acquire() {
+    fun <T> withPermitBlocking(block: () -> T): T {
         semaphore.acquire()
-    }
-
-    fun release() {
-        semaphore.release()
+        try {
+            return block()
+        } finally {
+            semaphore.release()
+        }
     }
 }
