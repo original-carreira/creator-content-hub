@@ -28,11 +28,10 @@ class WhisperTranscriptionAdapter(
     private val logger = LoggerFactory.getLogger(javaClass)
 
     override fun transcribe(audioPath: String, jobId: String): TranscriptionResult {
-        val start = System.currentTimeMillis()
+        return WhisperConcurrencyLimiter.withPermitBlocking {
 
-        WhisperConcurrencyLimiter.acquire()
+            val start = System.currentTimeMillis()
 
-        try {
             val audioFile = File(audioPath)
             if (!audioFile.exists()) {
                 logger.error("event=transcription_file_missing jobId={} path={}", jobId, audioPath)
@@ -63,144 +62,172 @@ class WhisperTranscriptionAdapter(
                 command.joinToString(" ")
             )
 
-            val process = ProcessBuilder(command)
-                .redirectErrorStream(true)
-                .start()
+            var process: Process? = null
 
-            val outputLines = Collections.synchronizedList(mutableListOf<String>())
+            try {
+                process = ProcessBuilder(command)
+                    .redirectErrorStream(true)
+                    .start()
 
-            val readerThread = Thread {
-                try {
-                    BufferedReader(InputStreamReader(process.inputStream, Charsets.UTF_8)).use { reader ->
-                        var line: String?
-                        var count = 0
+                val activeProcess = process
 
-                        while (reader.readLine().also { line = it } != null) {
-                            val currentLine = line ?: break
+                val outputLines = Collections.synchronizedList(mutableListOf<String>())
 
-                            logger.info(
-                                "event=whisper_output jobId={} line={}",
-                                jobId,
-                                currentLine
-                            )
+                val readerThread = Thread {
+                    try {
+                        BufferedReader(InputStreamReader(activeProcess.inputStream, Charsets.UTF_8)).use { reader ->
+                            var line: String?
+                            var count = 0
 
-                            if (count < MAX_OUTPUT_LINES) {
-                                outputLines.add(currentLine)
+                            while (reader.readLine().also { line = it } != null) {
+                                val currentLine = line ?: break
+
+                                logger.info(
+                                    "event=whisper_output jobId={} line={}",
+                                    jobId,
+                                    currentLine
+                                )
+
+                                if (count < MAX_OUTPUT_LINES) {
+                                    outputLines.add(currentLine)
+                                }
+                                count++
                             }
-                            count++
                         }
-                    }
-                } catch (e: Exception) {
-                    logger.error(
-                        "event=whisper_reader_error jobId={} message={}",
-                        jobId,
-                        e.message,
-                        e
-                    )
-                }
-            }
-
-            readerThread.start()
-
-            val timeoutMs = TimeUnit.MINUTES.toMillis(timeoutMinutes)
-
-            // LOOP CORRETO (substitui isAlive)
-            while (true) {
-
-                val finished = process.waitFor(1, TimeUnit.SECONDS)
-
-                if (finished) break
-
-                val job = jobRepository.findById(jobId)
-
-                if (job?.status == JobStatus.CANCELED) {
-                    StructuredLogger.log(
-                        logger = logger,
-                        event = "job_cancel_detected",
-                        jobId = jobId,
-                        requestId = "internal",
-                        status = "CANCELED",
-                        extra = mapOf("stage" to "transcription")
-                    )
-
-                    process.destroyForcibly()
-
-                    StructuredLogger.log(
-                        logger = logger,
-                        event = "process_killed",
-                        jobId = jobId,
-                        requestId = "internal",
-                        status = "CANCELED",
-                        extra = mapOf(
-                            "stage" to "transcription",
-                            "process" to "whisper"
+                    } catch (e: Exception) {
+                        logger.error(
+                            "event=whisper_reader_error jobId={} message={}",
+                            jobId,
+                            e.message,
+                            e
                         )
+                    }
+                }
+
+                readerThread.start()
+
+                val timeoutMs = TimeUnit.MINUTES.toMillis(timeoutMinutes)
+
+                while (true) {
+
+                    val finished = activeProcess.waitFor(1, TimeUnit.SECONDS)
+                    if (finished) break
+
+                    val job = jobRepository.findById(jobId)
+
+                    if (job?.status == JobStatus.CANCELED) {
+
+                        StructuredLogger.log(
+                            logger = logger,
+                            event = "job_cancel_detected",
+                            jobId = jobId,
+                            requestId = "internal",
+                            status = "CANCELED",
+                            extra = mapOf("stage" to "transcription")
+                        )
+
+                        activeProcess.destroyForcibly()
+                        readerThread?.interrupt()
+
+                        StructuredLogger.log(
+                            logger = logger,
+                            event = "process_killed",
+                            jobId = jobId,
+                            requestId = "internal",
+                            status = "CANCELED",
+                            extra = mapOf(
+                                "stage" to "transcription",
+                                "process" to "whisper"
+                            )
+                        )
+
+                        throw JobCanceledException()
+                    }
+
+                    val elapsed = System.currentTimeMillis() - start
+
+                    if (elapsed > timeoutMs) {
+                        activeProcess.destroyForcibly()
+                        readerThread?.interrupt()
+
+                        logger.error(
+                            "event=transcription_timeout jobId={} timeoutMinutes={}",
+                            jobId,
+                            timeoutMinutes
+                        )
+
+                        throw TranscriptionTimeoutException(
+                            "Transcription timed out after $timeoutMinutes minutes"
+                        )
+                    }
+                }
+
+                readerThread.join(5_000)
+
+                if (readerThread.isAlive) {
+                    logger.warn("event=whisper_reader_thread_stuck jobId={}", jobId)
+                    readerThread.interrupt()
+                }
+
+                logger.info(
+                    "event=whisper_full_output jobId={} output={}",
+                    jobId,
+                    outputLines.joinToString("\n")
+                )
+
+                val exitCode = activeProcess.exitValue()
+
+                if (exitCode != 0) {
+                    val error = outputLines.joinToString("\n")
+
+                    logger.error(
+                        "event=transcription_failed jobId={} exitCode={} fullOutput={}",
+                        jobId,
+                        exitCode,
+                        error
                     )
 
-                    throw JobCanceledException()
+                    throw RuntimeException("Whisper failed (code=$exitCode): $error")
                 }
 
-                val elapsed = System.currentTimeMillis() - start
+                val expectedFile = outputDir.listFiles { _, name ->
+                    name.startsWith(audioFile.nameWithoutExtension) && name.endsWith(".txt")
+                }?.maxByOrNull { it.lastModified() }
+                    ?: throw RuntimeException("Transcription output file not found")
 
-                if (elapsed > timeoutMs) {
-                    process.destroyForcibly()
-                    logger.error("event=transcription_timeout jobId={}", jobId)
-                    throw TranscriptionTimeoutException("Transcription timed out after $timeoutMinutes minutes")
+                if (!expectedFile.exists() || expectedFile.length() == 0L) {
+                    throw RuntimeException("Transcription file is missing or empty")
                 }
-            }
 
-            // garante leitura completa (sem timeout artificial)
-            readerThread.join()
+                val text = expectedFile.readText(Charsets.UTF_8).trim()
 
-            logger.info(
-                "event=whisper_full_output jobId={} output={}",
-                jobId,
-                outputLines.joinToString("\n")
-            )
+                if (text.isBlank()) {
+                    throw RuntimeException("Transcription result is empty")
+                }
 
-            val exitCode = process.exitValue()
+                val totalDuration = System.currentTimeMillis() - start
 
-            if (exitCode != 0) {
-                val error = outputLines.joinToString("\n")
-                logger.error(
-                    "event=transcription_failed jobId={} exitCode={} fullOutput={}",
+                logger.info(
+                    "event=transcription_success jobId={} durationMs={}",
                     jobId,
-                    exitCode,
-                    error
+                    totalDuration
                 )
-                throw RuntimeException("Whisper failed (code=$exitCode): $error")
+
+                TranscriptionResult(
+                    text = text,
+                    durationMs = totalDuration
+                )
+
+            } finally {
+                if (process?.isAlive == true) {
+                    process.destroyForcibly()
+
+                    logger.warn(
+                        "event=process_force_killed jobId={} stage=transcription",
+                        jobId
+                    )
+                }
             }
-
-            val expectedFile = outputDir.listFiles { _, name ->
-                name.startsWith(audioFile.nameWithoutExtension) && name.endsWith(".txt")
-            }?.maxByOrNull { it.lastModified() }
-                ?: throw RuntimeException("Transcription output file not found")
-
-            if (!expectedFile.exists() || expectedFile.length() == 0L) {
-                throw RuntimeException("Transcription file is missing or empty")
-            }
-
-            val text = expectedFile.readText(Charsets.UTF_8).trim()
-
-            if (text.isBlank()) {
-                throw RuntimeException("Transcription result is empty")
-            }
-
-            val totalDuration = System.currentTimeMillis() - start
-
-            logger.info(
-                "event=transcription_success jobId={} durationMs={}",
-                jobId,
-                totalDuration
-            )
-
-            return TranscriptionResult(
-                text = text,
-                durationMs = totalDuration
-            )
-
-        } finally {
-            WhisperConcurrencyLimiter.release()
         }
     }
 

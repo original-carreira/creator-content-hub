@@ -4,12 +4,13 @@ import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.application.port.VideoIngestionPort
 import com.creatorcontenthub.domain.exception.DownloadTimeoutException
 import com.creatorcontenthub.domain.exception.JobCanceledException
-import com.creatorcontenthub.domain.model.ErrorClassifier
-import com.creatorcontenthub.domain.model.ErrorType
 import com.creatorcontenthub.domain.model.JobStatus
 import com.creatorcontenthub.infrastructure.config.IngestionTimeoutConfig
+import com.creatorcontenthub.infrastructure.exception.ProcessExecutionException
 import com.creatorcontenthub.infrastructure.logging.StructuredLogger
 import com.creatorcontenthub.infrastructure.resilience.RetryUtil
+import com.creatorcontenthub.application.resilience.ErrorClassifier
+import com.creatorcontenthub.domain.model.ErrorType
 import org.slf4j.LoggerFactory
 import java.io.BufferedReader
 import java.io.File
@@ -40,24 +41,31 @@ class YtDlpVideoIngestionAdapter(
 
         val outputPathTemplate = "${audioDir.absolutePath}/$jobId.%(ext)s"
 
-        cleanupPreviousArtifacts(audioDir, jobId)
-
         val ytDlpCommand = resolveCommand()
 
         RetryUtil.retry(
             maxAttempts = 3,
             initialDelayMs = 1000,
             shouldRetry = { throwable ->
-                val type = ErrorClassifier.classify(throwable = throwable)
-                shouldRetry(type)
+                val errorType = ErrorClassifier.classify(
+                    throwable = throwable,
+                    message = throwable.message
+                )
+
+                when (errorType) {
+                    ErrorType.TIMEOUT,
+                    ErrorType.DEPENDENCY_FAILURE -> true
+
+                    ErrorType.PROCESS_ERROR,
+                    ErrorType.UNKNOWN -> false
+                }
             },
             stage = "download",
             jobId = jobId
         ) {
-
+            cleanupPreviousArtifacts(audioDir, jobId)
             var process: Process? = null
             var readerThread: Thread? = null
-
             val outputLines = Collections.synchronizedList(mutableListOf<String>())
 
             try {
@@ -134,6 +142,7 @@ class YtDlpVideoIngestionAdapter(
                         )
 
                         activeProcess.destroyForcibly()
+                        readerThread?.interrupt()
 
                         StructuredLogger.log(
                             logger = logger,
@@ -151,6 +160,7 @@ class YtDlpVideoIngestionAdapter(
 
                     if (elapsed > timeoutMs) {
                         activeProcess.destroyForcibly()
+                        readerThread?.interrupt()
 
                         logger.error(
                             "event=download_timeout jobId={} timeoutMs={}",
@@ -161,9 +171,6 @@ class YtDlpVideoIngestionAdapter(
                         throw DownloadTimeoutException("yt-dlp timeout after $timeoutMs ms")
                     }
                 }
-
-                // GARANTE leitura completa (sem timeout artificial)
-                readerThread.join()
 
                 logger.info(
                     "event=yt_dlp_full_output jobId={} output={}",
@@ -176,31 +183,42 @@ class YtDlpVideoIngestionAdapter(
                 if (exitCode != 0) {
 
                     val errorLog = outputLines.joinToString("\n")
-                    val errorType = ErrorClassifier.classify(exitCode = exitCode)
 
                     logger.error(
-                        "event=download_failed jobId={} exitCode={} errorType={} output={}",
+                        "event=download_failed jobId={} exitCode={} output={}",
                         jobId,
                         exitCode,
-                        errorType,
                         errorLog
                     )
 
-                    if (shouldRetry(errorType)) {
-                        throw RuntimeException("retryable download failure: $errorType")
-                    } else {
-                        throw IllegalStateException("non-retryable download failure: $errorType")
-                    }
+                    throw ProcessExecutionException(
+                        exitCode = exitCode,
+                        message = errorLog
+                    )
                 }
 
             } finally {
 
-                if (process?.isAlive == true) {
-                    process.destroyForcibly()
+                if (process != null) {
+                    if (process.isAlive) {
+                        process.destroyForcibly()
+
+                        logger.warn(
+                            "event=process_force_killed jobId={} stage=download",
+                            jobId
+                        )
+                    }
                 }
 
                 // NÃO interrompe → apenas garante finalização segura
-                readerThread?.join()
+                readerThread?.join(5_000)
+                if (readerThread?.isAlive == true) {
+                    readerThread.interrupt()
+                    logger.warn(
+                        "event=reader_thread_stuck jobId={} stage=download",
+                        jobId
+                    )
+                }
             }
         }
 
@@ -244,14 +262,6 @@ class YtDlpVideoIngestionAdapter(
                 }
                 logger.warn("event=cleanup_previous_artifact jobId={} file={}", jobId, file.name)
             }
-        }
-    }
-
-    private fun shouldRetry(errorType: ErrorType): Boolean {
-        return when (errorType) {
-            ErrorType.TIMEOUT -> true
-            ErrorType.DEPENDENCY_FAILURE -> true
-            else -> false
         }
     }
 }
