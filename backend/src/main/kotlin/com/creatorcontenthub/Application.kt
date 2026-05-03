@@ -37,6 +37,7 @@ import com.creatorcontenthub.infrastructure.config.IngestionTimeoutConfig
 import com.creatorcontenthub.infrastructure.metrics.HikariMetrics
 import com.creatorcontenthub.infrastructure.metrics.JvmMetricsConfig
 import com.creatorcontenthub.infrastructure.metrics.PrometheusRegistry
+import com.creatorcontenthub.infrastructure.metrics.SearchMetrics
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -153,9 +154,11 @@ fun Application.module() {
             ?: 7.0
     )
 
+    val searchMetrics = SearchMetrics(meterRegistry)
+
     val searchJobsUseCase = SearchJobsUseCase(
         repository = jobSearchRepository,
-        meterRegistry = meterRegistry
+        searchMetrics = searchMetrics
     )
     val listJobsUseCase = ListJobsUseCase(jobQueryRepository)
 
