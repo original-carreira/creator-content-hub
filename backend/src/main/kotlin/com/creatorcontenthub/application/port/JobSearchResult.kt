@@ -20,6 +20,7 @@ interface JobSearchRepository {
 
     fun search(
         query: String,
+        rawQuery: String,
         status: String?,
         from: Long?,
         to: Long?,
@@ -29,6 +30,7 @@ interface JobSearchRepository {
 
     fun count(
         query: String,
+        rawQuery: String,
         status: String?,
         from: Long?,
         to: Long?
