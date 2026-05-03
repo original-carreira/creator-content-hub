@@ -2,28 +2,18 @@ package com.creatorcontenthub.application.usecase
 
 import com.creatorcontenthub.application.dto.SearchDebugInfo
 import com.creatorcontenthub.application.port.JobSearchRepository
-import io.micrometer.core.instrument.DistributionSummary
 import kotlinx.serialization.Serializable
 import org.slf4j.LoggerFactory
-import io.micrometer.core.instrument.MeterRegistry
-import io.micrometer.core.instrument.Counter
-import io.micrometer.core.instrument.Timer
 import kotlin.random.Random
 
 class SearchJobsUseCase(
     private val repository: JobSearchRepository,
-    private val meterRegistry: MeterRegistry,
+    private val searchMetrics: com.creatorcontenthub.infrastructure.metrics.SearchMetrics,
     private val analyticsEnabled: Boolean =
         System.getenv("SEARCH_ANALYTICS_ENABLED")?.toBoolean() ?: true
 ) {
 
     private val logger = LoggerFactory.getLogger(SearchJobsUseCase::class.java)
-
-    private val timer: Timer =
-        Timer.builder("search_query_duration")
-            .description("Search query execution time")
-            .publishPercentiles(0.5, 0.9, 0.99)
-            .register(meterRegistry)
 
     private fun sanitizeQuery(input: String): String {
         return input
@@ -53,7 +43,7 @@ class SearchJobsUseCase(
 
         val startTime = System.currentTimeMillis()
 
-        val result = timer.recordCallable {
+        val result = run {
 
             val normalizedQuery = query
                 .trim()
@@ -109,35 +99,22 @@ class SearchJobsUseCase(
 
         // --- SEARCH ANALYTICS METRICS (LOW CARDINALITY) ---
 
-        val hasResults = result.items.isNotEmpty().toString()
-        val statusFilter = if (status != null) "present" else "absent"
+        val hasResults = result.items.isNotEmpty()
+        val hasStatusFilter = status != null
 
-        Counter.builder("search_query_total")
-            .tag("has_results", hasResults)
-            .tag("status_filter", statusFilter)
-            .register(meterRegistry)
-            .increment()
+        searchMetrics.incrementSearchQuery(hasResults, hasStatusFilter)
+        searchMetrics.recordResultsCount(result.items.size)
+        searchMetrics.recordDuration(durationMs)
 
-        if (result.items.isEmpty()) {
+        if (!hasResults) {
+            searchMetrics.incrementEmptyQuery(hasStatusFilter)
 
             logger.info(
                 "event=search_zero_results q={} requestId={}",
                 safeQuery,
                 "N/A"
             )
-
-            Counter.builder("search_query_empty_total")
-                .tag("status_filter", statusFilter)
-                .register(meterRegistry)
-                .increment()
         }
-
-        // --- RESULT DISTRIBUTION METRIC ---
-
-        DistributionSummary.builder("search_results_count")
-            .tag("status_filter", statusFilter)
-            .register(meterRegistry)
-            .record(result.items.size.toDouble())
 
         // --- SEARCH ANALYTICS LOG (NOVO) ---
 
@@ -146,7 +123,7 @@ class SearchJobsUseCase(
                 "event=search_analytics q={} result_count={} has_results={} duration_ms={}",
                 safeQuery,
                 result.items.size,
-                result.items.isNotEmpty(),
+                hasResults,
                 durationMs
             )
         }
@@ -157,11 +134,11 @@ class SearchJobsUseCase(
             "event=search_executed q={} results={} has_results={} duration_ms={}",
             safeQuery,
             result.items.size,
-            result.items.isNotEmpty(),
+            hasResults,
             durationMs
         )
 
-        if (result.items.isNotEmpty()) {
+        if (hasResults) {
             val top = result.items.first()
             logger.info(
                 "event=search_top_result job_id={} score={}",
@@ -170,7 +147,7 @@ class SearchJobsUseCase(
             )
         }
 
-        if (debug && result.items.isNotEmpty()) {
+        if (debug && hasResults) {
 
             val topScore = result.items.first().finalScore ?: 0.0
             val avgScore = result.items.map { it.finalScore ?: 0.0 }.average()
