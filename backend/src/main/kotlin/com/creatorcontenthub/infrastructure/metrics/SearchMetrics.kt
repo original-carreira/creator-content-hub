@@ -21,7 +21,7 @@ class SearchMetrics(
             .publishPercentileHistogram() // 👈 CRÍTICO
             .serviceLevelObjectives(
                 1.0, 3.0, 5.0, 10.0, 20.0
-            ) // 👈 buckets úteis
+            ) // buckets uteis
             .register(meterRegistry)
 
     // --- TIMER CACHEADO ---
