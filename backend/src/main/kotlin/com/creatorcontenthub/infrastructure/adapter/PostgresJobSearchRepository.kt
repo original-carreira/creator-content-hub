@@ -28,7 +28,7 @@ class PostgresJobSearchRepository(
 
         val sql = """
         WITH query AS (
-            SELECT to_tsquery('simple', ?) AS q
+            SELECT to_tsquery('portuguese', ?) AS q
         ),
         scored AS (
             SELECT
@@ -45,8 +45,10 @@ class PostgresJobSearchRepository(
                     ''
                 ) AS snippet,
 
-                COALESCE(ts_rank_cd(search_vector, query.q) * 2.0, 0) AS rank,
-
+                COALESCE(
+                    ts_rank_cd(search_vector, query.q),
+                    0
+                ) AS rank,
                 EXP(
                     -(
                         EXTRACT(EPOCH FROM (NOW() - to_timestamp(created_at / 1000))) / 86400
@@ -55,10 +57,11 @@ class PostgresJobSearchRepository(
 
             FROM jobs, query
             WHERE
-                (
-                    search_vector @@ query.q
-                    OR job_id = ?
-                )
+            (
+                search_vector @@ query.q
+                OR job_id = ?
+                OR summary ILIKE '%' || ? || '%'
+            )
                 AND created_at IS NOT NULL
                 AND (?::text IS NULL OR status = ?)
                 AND (?::bigint IS NULL OR created_at >= ?)
@@ -73,12 +76,14 @@ class PostgresJobSearchRepository(
             recency_score,
 
             GREATEST(
+                0,
                 LEAST(
                     (
                         (
-                            rank * ? +
-                            recency_score * ?
-                        ) *
+                            (rank * ?) +
+                            (recency_score * ?)
+                        )
+                        *
                         CASE
                             WHEN status = 'DONE' THEN ?
                             WHEN status = 'FAILED' THEN ?
@@ -86,12 +91,11 @@ class PostgresJobSearchRepository(
                         END
                     ),
                     ?
-                ),
-                0
+                )
             ) AS final_score
 
         FROM scored
-        ORDER BY final_score DESC
+        ORDER BY final_score DESC, created_at DESC
         LIMIT ? OFFSET ?
         """.trimIndent()
 
@@ -101,10 +105,10 @@ class PostgresJobSearchRepository(
                 var i = 1
 
                 stmt.setString(i++, query) // to_tsquery
-
                 stmt.setDouble(i++, recencyDecay)
 
                 stmt.setString(i++, rawQuery) // fallback por ID correto
+                stmt.setString(i++, rawQuery) // ILIKE fallback
 
                 stmt.setString(i++, status)
                 stmt.setString(i++, status)
@@ -165,7 +169,7 @@ class PostgresJobSearchRepository(
 
         val sql = """
             WITH query AS (
-                SELECT to_tsquery('simple', ?) AS q
+                SELECT to_tsquery('portuguese', ?) AS q
             )
             SELECT COUNT(*)
             FROM jobs, query
@@ -173,6 +177,7 @@ class PostgresJobSearchRepository(
                 (
                     search_vector @@ query.q
                     OR job_id = ?
+                    OR summary ILIKE '%' || ? || '%'
                 )
                 AND created_at IS NOT NULL
                 AND (?::text IS NULL OR status = ?)
@@ -186,6 +191,7 @@ class PostgresJobSearchRepository(
                 var i = 1
 
                 stmt.setString(i++, query)
+                stmt.setString(i++, rawQuery)
                 stmt.setString(i++, rawQuery)
 
                 stmt.setString(i++, status)
