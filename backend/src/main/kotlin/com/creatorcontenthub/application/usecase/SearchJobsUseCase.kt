@@ -82,7 +82,7 @@ class SearchJobsUseCase(
                         debug = SearchDebugInfo(
                             rank = it.rank,
                             recencyScore = it.recencyScore ?: 0.0,
-                            finalScore = it.finalScore ?: it.rank
+                            finalScore = it.finalScore ?: 0.0
                         )
                     )
                 }
@@ -141,9 +141,12 @@ class SearchJobsUseCase(
         if (hasResults) {
             val top = result.items.first()
             logger.info(
-                "event=search_top_result job_id={} score={}",
+                "event=search_top_result job_id={} score={} rank={} recency={} q={}",
                 top.jobId,
-                top.finalScore ?: 0.0
+                top.finalScore ?: 0.0,
+                top.rank,
+                top.recencyScore ?: 0.0,
+                safeQuery
             )
         }
 
