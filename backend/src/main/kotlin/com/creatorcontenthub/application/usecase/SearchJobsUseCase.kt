@@ -31,6 +31,12 @@ class SearchJobsUseCase(
             .replace(Regex("[\\n\\r\\t]"), " ") // remove quebra de linha
     }
 
+    private fun toTsQuery(q: String): String {
+        return q.split(" ")
+            .filter { it.isNotBlank() }
+            .joinToString(" & ") { "$it:*" }
+    }
+
     private fun shouldSample(rate: Double = 0.1): Boolean {
         return Random.nextDouble() < rate
     }
@@ -49,11 +55,22 @@ class SearchJobsUseCase(
 
         val result = timer.recordCallable {
 
+            val normalizedQuery = query
+                .trim()
+                .lowercase()
+                .replace(Regex("\\s+"), " ")
+
+            if (normalizedQuery.isBlank()) {
+                throw IllegalArgumentException("Query cannot be empty")
+            }
+
+            val tsQuery = toTsQuery(normalizedQuery)
             val safeLimit = (limit ?: 20).coerceIn(1, 100)
             val safeOffset = (offset ?: 0).coerceAtLeast(0)
 
             val results = repository.search(
-                query = query,
+                query = tsQuery,
+                rawQuery = normalizedQuery, // NOVO PARAM
                 status = status,
                 from = from,
                 to = to,
@@ -62,7 +79,8 @@ class SearchJobsUseCase(
             )
 
             val total = repository.count(
-                query = query,
+                query = tsQuery,
+                rawQuery = normalizedQuery, // MESMA LÓGICA
                 status = status,
                 from = from,
                 to = to
@@ -101,21 +119,17 @@ class SearchJobsUseCase(
             .increment()
 
         if (result.items.isEmpty()) {
+
+            logger.info(
+                "event=search_zero_results q={} requestId={}",
+                safeQuery,
+                "N/A"
+            )
+
             Counter.builder("search_query_empty_total")
                 .tag("status_filter", statusFilter)
                 .register(meterRegistry)
                 .increment()
-
-            if (analyticsEnabled) {
-                logger.info(
-                    "event=search_executed q={} status={} from={} to={} results={}",
-                    safeQuery,
-                    status,
-                    from,
-                    to,
-                    result.items.size
-                )
-            }
         }
 
         // --- RESULT DISTRIBUTION METRIC ---
@@ -140,12 +154,11 @@ class SearchJobsUseCase(
         // --- LOGS OPERACIONAIS (SEMPRE ATIVOS, MAS SANITIZADOS) ---
 
         logger.info(
-            "event=search_executed q={} status={} from={} to={} results={}",
+            "event=search_executed q={} results={} has_results={} duration_ms={}",
             safeQuery,
-            status,
-            from,
-            to,
-            result.items.size
+            result.items.size,
+            result.items.isNotEmpty(),
+            durationMs
         )
 
         if (result.items.isNotEmpty()) {

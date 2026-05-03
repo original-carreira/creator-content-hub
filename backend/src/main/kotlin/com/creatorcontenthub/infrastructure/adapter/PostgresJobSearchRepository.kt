@@ -18,6 +18,7 @@ class PostgresJobSearchRepository(
 
     override fun search(
         query: String,
+        rawQuery: String,
         status: String?,
         from: Long?,
         to: Long?,
@@ -25,20 +26,9 @@ class PostgresJobSearchRepository(
         offset: Int
     ): List<JobSearchResult> {
 
-        val normalizedQuery = query
-            .trim()
-            .lowercase()
-            .replace(Regex("\\s+"), " ")
-
-        if (normalizedQuery.isBlank()) return emptyList()
-
         val sql = """
         WITH query AS (
-            SELECT
-                COALESCE(
-                    websearch_to_tsquery('portuguese', ?),
-                    plainto_tsquery('simple', ?)
-                ) AS q
+            SELECT to_tsquery('simple', ?) AS q
         ),
         scored AS (
             SELECT
@@ -67,7 +57,6 @@ class PostgresJobSearchRepository(
             WHERE
                 (
                     search_vector @@ query.q
-                    OR summary ILIKE '%' || ? || '%'
                     OR job_id = ?
                 )
                 AND created_at IS NOT NULL
@@ -104,20 +93,18 @@ class PostgresJobSearchRepository(
         FROM scored
         ORDER BY final_score DESC
         LIMIT ? OFFSET ?
-    """.trimIndent()
+        """.trimIndent()
 
         dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
 
                 var i = 1
 
-                stmt.setString(i++, normalizedQuery)
-                stmt.setString(i++, normalizedQuery)
+                stmt.setString(i++, query) // to_tsquery
 
                 stmt.setDouble(i++, recencyDecay)
 
-                stmt.setString(i++, normalizedQuery)
-                stmt.setString(i++, normalizedQuery)
+                stmt.setString(i++, rawQuery) // fallback por ID correto
 
                 stmt.setString(i++, status)
                 stmt.setString(i++, status)
@@ -163,40 +150,6 @@ class PostgresJobSearchRepository(
                     )
                 }
 
-                // FALLBACK FINAL (CASO ZERO RESULTADOS)
-                if (results.isEmpty()) {
-                    val fallbackSql = """
-                    SELECT job_id, status, created_at, summary
-                    FROM jobs
-                    WHERE job_id = ?
-                    LIMIT ? OFFSET ?
-                """.trimIndent()
-
-                    conn.prepareStatement(fallbackSql).use { fallbackStmt ->
-                        fallbackStmt.setString(1, normalizedQuery)
-                        fallbackStmt.setInt(2, limit)
-                        fallbackStmt.setInt(3, offset)
-
-                        val fallbackRs = fallbackStmt.executeQuery()
-
-                        while (fallbackRs.next()) {
-                            val createdAt = Instant.ofEpochMilli(fallbackRs.getLong("created_at"))
-
-                            results.add(
-                                JobSearchResult(
-                                    jobId = fallbackRs.getString("job_id"),
-                                    status = fallbackRs.getString("status"),
-                                    createdAt = createdAt.toString(),
-                                    snippet = fallbackRs.getString("summary") ?: "",
-                                    rank = 0.0,
-                                    recencyScore = 0.0,
-                                    finalScore = 0.0
-                                )
-                            )
-                        }
-                    }
-                }
-
                 return results
             }
         }
@@ -204,6 +157,7 @@ class PostgresJobSearchRepository(
 
     override fun count(
         query: String,
+        rawQuery: String,
         status: String?,
         from: Long?,
         to: Long?
@@ -211,18 +165,14 @@ class PostgresJobSearchRepository(
 
         val sql = """
             WITH query AS (
-                SELECT 
-                    COALESCE(
-                        websearch_to_tsquery('portuguese', ?),
-                        plainto_tsquery('simple', ?)
-                    ) AS q
+                SELECT to_tsquery('simple', ?) AS q
             )
             SELECT COUNT(*)
             FROM jobs, query
             WHERE
                 (
                     search_vector @@ query.q
-                    OR summary ILIKE '%' || ? || '%'
+                    OR job_id = ?
                 )
                 AND created_at IS NOT NULL
                 AND (?::text IS NULL OR status = ?)
@@ -230,30 +180,20 @@ class PostgresJobSearchRepository(
                 AND (?::bigint IS NULL OR created_at <= ?)
         """.trimIndent()
 
-        val sanitizedQuery = query
-            .trim()
-            .lowercase()
-            .replace(Regex("\\s+"), " ")
-        if (sanitizedQuery.isBlank()) return 0
-
         dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
 
                 var i = 1
 
-                stmt.setString(i++, sanitizedQuery)
-                stmt.setString(i++, sanitizedQuery)
-                stmt.setString(i++, sanitizedQuery)
+                stmt.setString(i++, query)
+                stmt.setString(i++, rawQuery)
 
-                // status
                 stmt.setString(i++, status)
                 stmt.setString(i++, status)
 
-                // from
                 stmt.setObject(i++, from)
                 stmt.setObject(i++, from)
 
-                // to
                 stmt.setObject(i++, to)
                 stmt.setObject(i++, to)
 
