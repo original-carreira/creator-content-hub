@@ -31,7 +31,7 @@ fun Route.searchRoutes(useCase: SearchJobsUseCase) {
             return@get
         }
 
-        val allowedStatus = setOf("PENDING", "PROCESSING", "DONE", "FAILED")
+        val allowedStatus = setOf("PENDING", "PROCESSING", "DONE", "FAILED", "CANCELED")
 
         if (status != null && status !in allowedStatus) {
             call.respondError(HttpStatusCode.BadRequest, "Invalid status")

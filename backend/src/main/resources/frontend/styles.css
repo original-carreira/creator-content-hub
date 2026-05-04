@@ -14,6 +14,9 @@
 .results {
     width: 40%;
     border-right: 1px solid #ccc;
+
+    max-height: 500px;
+    overflow-y: auto;
 }
 
 .details {
@@ -137,4 +140,103 @@ pre {
     margin-bottom: 10px;
     font-size: 14px;
     color: #333;
+}
+
+.empty-state {
+    padding: 20px;
+    text-align: center;
+    color: #666;
+}
+
+.empty-state strong {
+    display: block;
+    font-size: 16px;
+    margin-bottom: 6px;
+}
+
+.highlight {
+    background: yellow;
+    font-weight: bold;
+}
+
+.result-snippet em {
+    background: yellow;
+    font-style: normal;
+    font-weight: bold;
+}
+
+.result-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 12px;
+    color: #777;
+    margin-top: 6px;
+}
+
+.meta-status {
+    font-weight: bold;
+}
+
+.meta-score {
+    color: #999;
+    font-style: italic;
+}
+
+.error-state {
+    padding: 16px;
+    text-align: center;
+    color: #c00;
+}
+
+.result-header {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.actions-primary,
+.actions-secondary,
+.actions-selection {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    align-items: center;
+}
+
+/* INPUT MAIOR */
+.search-input {
+    height: 44px;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    width: 500px; /* ~2cm maior visualmente */
+}
+
+/* LINHAS ORGANIZADAS */
+.row-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+    align-items: center;
+}
+
+/* PADRÃO DE TAMANHO */
+.action-btn {
+    min-width: 120px;
+    height: 40px;
+}
+
+/* AJUSTE PARA SELECT */
+select.action-btn {
+    padding: 8px;
+}
+
+/* AJUSTE PARA LABEL */
+label.action-btn {
+    min-width: auto;
+}
+
+.result-title {
+    font-weight: bold;
+    font-size: 14px;
+    margin-bottom: 4px;
 }

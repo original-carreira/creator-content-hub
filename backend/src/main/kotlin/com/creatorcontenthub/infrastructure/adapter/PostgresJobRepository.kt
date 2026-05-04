@@ -87,6 +87,17 @@ class PostgresJobRepository(
         }
     }
 
+    override fun delete(jobId: String) {
+        val sql = "DELETE FROM jobs WHERE job_id = ?"
+
+        dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setString(1, jobId)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
     override fun findById(jobId: String): JobState? {
         val sql = "SELECT * FROM jobs WHERE job_id = ?"
 

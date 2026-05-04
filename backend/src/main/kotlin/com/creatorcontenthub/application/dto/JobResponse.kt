@@ -9,5 +9,6 @@ data class JobResponse(
     val startedAt: Long,
     val finishedAt: Long?,
     val transcription: String?,
-    val summary: String?
+    val summary: String?,
+    val title: String? = null
 )

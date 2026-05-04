@@ -21,6 +21,26 @@ class SearchJobsUseCase(
             .replace(Regex("[\\n\\r\\t]"), " ") // remove quebra de linha
     }
 
+    private fun applyHighlight(snippet: String, query: String): String {
+        if (query.isBlank()) return snippet
+
+        val terms = query
+            .lowercase()
+            .split(" ")
+            .filter { it.length >= 2 }
+
+        var result = snippet
+
+        for (term in terms) {
+            val regex = Regex("(?i)(${Regex.escape(term)})")
+            result = regex.replace(result) {
+                "<span class=\"highlight\">${it.value}</span>"
+            }
+        }
+
+        return result
+    }
+
     private fun toTsQuery(q: String): String {
         return q.split(" ")
             .filter { it.isNotBlank() }
@@ -76,8 +96,14 @@ class SearchJobsUseCase(
                 to = to
             )
 
+            val highlightedResults = results.map {
+                it.copy(
+                    snippet = applyHighlight(it.snippet, normalizedQuery)
+                )
+            }
+
             val mappedResults = if (debug) {
-                results.map {
+                highlightedResults.map {
                     it.copy(
                         debug = SearchDebugInfo(
                             rank = it.rank,
@@ -87,7 +113,7 @@ class SearchJobsUseCase(
                     )
                 }
             } else {
-                results
+                highlightedResults
             }
 
             SearchResult(mappedResults, total)
