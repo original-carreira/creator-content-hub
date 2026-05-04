@@ -55,4 +55,18 @@ class InMemoryJobRepository : JobRepository {
 
         return true
     }
+
+    override fun findByVideoId(videoId: String): JobState? {
+        return store.values.firstOrNull { it.videoId == videoId }
+    }
+
+    override fun findWithIdByVideoId(videoId: String): Pair<String, JobState>? {
+        val entry = store.entries.firstOrNull { (_, job) ->
+            job.videoId == videoId
+        }
+
+        return entry?.let { (jobId, jobState) ->
+            jobId to jobState
+        }
+    }
 }

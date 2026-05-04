@@ -44,33 +44,6 @@ class YtDlpVideoIngestionAdapter(
 
         val ytDlpCommand = resolveCommand()
 
-        // =============================
-        // EXTRAIR TÍTULO DO VÍDEO
-        // =============================
-        val title = try {
-            val process = ProcessBuilder(
-                ytDlpCommand,
-                "--print", "title",
-                "--cookies-from-browser", "firefox",
-                url
-            ).redirectErrorStream(true)
-                .start()
-
-            val output = process.inputStream.bufferedReader().readText().trim()
-
-            val exitCode = process.waitFor()
-
-            if (exitCode != 0 || output.isBlank()) {
-                logger.warn("event=title_fetch_failed jobId={} exitCode={} output={}", jobId, exitCode, output)
-                null
-            } else {
-                output.lineSequence().firstOrNull()
-            }
-
-        } catch (e: Exception) {
-            logger.warn("event=title_fetch_exception jobId={} message={}", jobId, e.message)
-            null
-        }
         val outputLines = Collections.synchronizedList(mutableListOf<String>())
 
         RetryUtil.retry(
@@ -207,6 +180,13 @@ class YtDlpVideoIngestionAdapter(
                     outputLines.joinToString("\n")
                 )
 
+                logger.info(
+                    "event=yt_dlp_output_summary jobId={} total_lines={} sample={}",
+                    jobId,
+                    outputLines.size,
+                    outputLines.take(20)
+                )
+
                 val exitCode = activeProcess.exitValue()
 
                 if (exitCode != 0) {
@@ -267,8 +247,53 @@ class YtDlpVideoIngestionAdapter(
             jobId,
             outputFile.absolutePath
         )
+        val videoId = extractVideoId(url)
 
-        val finalTitle = title ?: extractTitleFromOutput(outputLines)
+        val cachedJob = videoId?.let { jobRepository.findByVideoId(it) }
+
+        val cachedTitle = cachedJob?.title
+
+        if (!cachedTitle.isNullOrBlank()) {
+            logger.info(
+                "event=title_cache_hit_persistent jobId={} videoId={} title={}",
+                jobId,
+                videoId,
+                cachedTitle
+            )
+
+            return IngestionResult(
+                audioPath = outputFile.absolutePath,
+                title = cachedTitle
+            )
+        }
+
+        // ---------------- TITLE RESOLUTION ----------------
+        val resolutionStart = System.currentTimeMillis()
+
+        val jsonTitle = extractTitleUsingJson(url, jobId)
+
+        val oembedTitle = if (jsonTitle == null) {
+            extractTitleUsingOEmbed(url, jobId)
+        } else null
+
+        val parsedTitle = extractTitleFromOutput(outputLines, jobId)
+
+        val finalTitle = jsonTitle ?: oembedTitle ?: parsedTitle
+
+        val source = when {
+            jsonTitle != null -> "JSON"
+            oembedTitle != null -> "OEMBED"
+            parsedTitle != null -> "FALLBACK"
+            else -> "UNKNOWN"
+        }
+
+        logger.info(
+            "event=title_source_resolved jobId={} videoId={} source={} duration_ms={}",
+            jobId,
+            videoId,
+            source,
+            System.currentTimeMillis() - resolutionStart
+        )
 
         return IngestionResult(
             audioPath = outputFile.absolutePath,
@@ -299,12 +324,162 @@ class YtDlpVideoIngestionAdapter(
         }
     }
 
-    private fun extractTitleFromOutput(outputLines: List<String>): String? {
+    private fun extractTitleFromOutput(
+        outputLines: List<String>,
+        jobId: String
+    ): String? {
+
+        logger.info(
+            "event=title_extraction_start jobId={} lines={}",
+            jobId,
+            outputLines.size
+        )
+
+        outputLines.forEach { line ->
+            if (
+                line.contains("title", ignoreCase = true) ||
+                line.contains("[youtube]", ignoreCase = true)
+            ) {
+                logger.info(
+                    "event=title_candidate jobId={} line={}",
+                    jobId,
+                    line
+                )
+            }
+        }
+
         return outputLines
             .firstOrNull { it.contains("[download] Destination:") }
             ?.substringAfter("Destination:")
             ?.trim()
             ?.substringAfterLast("\\")
             ?.substringBeforeLast(".")
+    }
+
+    // NOVA FUNÇÃO — JSON
+    private fun extractTitleUsingJson(
+        url: String,
+        jobId: String
+    ): String? {
+
+        val command = listOf(
+            "yt-dlp",
+            "--print-json",
+            "--skip-download",
+            "--no-playlist",
+            "--js-runtimes", "node",
+            "--sleep-interval", "2",
+            "--max-sleep-interval", "5",
+            url
+        )
+
+        logger.info(
+            "event=title_json_start jobId={} command={}",
+            jobId,
+            command.joinToString(" ")
+        )
+
+        return try {
+            val process = ProcessBuilder(command)
+                .redirectErrorStream(true)
+                .start()
+
+            val output = process.inputStream.bufferedReader().readText()
+
+            val exitCode = process.waitFor()
+
+            logger.info(
+                "event=title_json_raw jobId={} exitCode={} output_sample={}",
+                jobId,
+                exitCode,
+                output.take(500)
+            )
+
+            if (exitCode != 0) {
+                logger.warn(
+                    "event=title_json_failed jobId={} exitCode={}",
+                    jobId,
+                    exitCode
+                )
+                return null
+            }
+
+            val mapper = com.fasterxml.jackson.databind.ObjectMapper()
+            val node = mapper.readTree(output)
+
+            val title = node.get("title")?.asText()
+
+            logger.info(
+                "event=title_json_extracted jobId={} title={}",
+                jobId,
+                title
+            )
+
+            title
+
+        } catch (e: Exception) {
+            logger.error(
+                "event=title_json_exception jobId={} message={}",
+                jobId,
+                e.message,
+                e
+            )
+            null
+        }
+    }
+
+    private fun extractTitleUsingOEmbed(
+        url: String,
+        jobId: String
+    ): String? {
+
+        val oembedUrl = "https://www.youtube.com/oembed?url=$url&format=json"
+
+        logger.info(
+            "event=title_oembed_start jobId={} url={}",
+            jobId,
+            oembedUrl
+        )
+
+        return try {
+            val connection = java.net.URL(oembedUrl).openConnection()
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+
+            val response = connection.getInputStream()
+                .bufferedReader()
+                .readText()
+
+            logger.info(
+                "event=title_oembed_raw jobId={} response_sample={}",
+                jobId,
+                response.take(300)
+            )
+
+            val title = Regex("\"title\"\\s*:\\s*\"(.*?)\"")
+                .find(response)
+                ?.groupValues?.get(1)
+
+            logger.info(
+                "event=title_oembed_extracted jobId={} title={}",
+                jobId,
+                title
+            )
+
+            title
+
+        } catch (e: Exception) {
+            logger.warn(
+                "event=title_oembed_failed jobId={} message={}",
+                jobId,
+                e.message
+            )
+            null
+        }
+    }
+
+    private fun extractVideoId(url: String): String? {
+        val regex = Regex("(?:v=|youtu\\.be/|shorts/)([a-zA-Z0-9_-]{11})")
+        return regex.find(url)?.groupValues?.get(1)
     }
 }

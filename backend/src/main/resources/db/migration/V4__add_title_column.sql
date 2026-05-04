@@ -1,2 +1,1 @@
-ALTER TABLE jobs
-    ADD COLUMN title TEXT;
+-- V4 (removido - já incluído na V1)

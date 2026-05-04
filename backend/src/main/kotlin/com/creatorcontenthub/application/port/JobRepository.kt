@@ -18,4 +18,8 @@ interface JobRepository {
     fun isCanceled(jobId: String): Boolean
 
     fun markCanceledIfNotFinal(jobId: String): Boolean
+
+    fun findByVideoId(videoId: String): JobState?
+
+    fun findWithIdByVideoId(videoId: String): Pair<String, JobState>?
 }

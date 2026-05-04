@@ -125,8 +125,6 @@ fun Application.module() {
 
     Flyway.configure()
         .dataSource(dataSource)
-        .baselineOnMigrate(true)
-        .baselineVersion("1")
         .load()
         .migrate()
 

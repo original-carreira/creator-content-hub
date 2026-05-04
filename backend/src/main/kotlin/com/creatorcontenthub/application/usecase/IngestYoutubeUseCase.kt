@@ -7,6 +7,7 @@ import com.creatorcontenthub.domain.exception.*
 import com.creatorcontenthub.domain.model.*
 import com.creatorcontenthub.infrastructure.exception.ProcessExecutionException
 import com.creatorcontenthub.application.resilience.ErrorClassifier
+import com.creatorcontenthub.domain.util.YoutubeUrlUtils.extractVideoId
 import com.creatorcontenthub.infrastructure.logging.StructuredLogger
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
 import com.creatorcontenthub.infrastructure.metrics.IngestionMicrometerMetrics
@@ -44,7 +45,38 @@ class IngestYoutubeUseCase(
 
         try {
             val now = System.currentTimeMillis()
-            val initialJob = JobState.started(now)
+
+            val videoId = extractVideoId(request.url)
+
+            logger.info(
+                "event=video_id_extracted jobId={} videoId={}",
+                jobId,
+                videoId
+            )
+
+            // ✅ CACHE CHECK SEGURO (NULL SAFE)
+            if (videoId != null) {
+                val existing = jobRepository.findWithIdByVideoId(videoId)
+
+                if (existing != null) {
+                    val (existingJobId, existingJob) = existing
+
+                    logger.info(
+                        "event=ingest_cache_hit_pre jobId={} videoId={} existingJobId={} status={}",
+                        jobId,
+                        videoId,
+                        existingJobId,
+                        existingJob.status
+                    )
+
+                    return IngestYoutubeResponse(
+                        jobId = existingJobId,
+                        status = existingJob.status.name
+                    )
+                }
+            }
+
+            val initialJob = JobState.started(now, videoId)
 
             StructuredLogger.log(
                 logger,
@@ -60,7 +92,7 @@ class IngestYoutubeUseCase(
             micrometer.incrementStarted()
 
             scope.launch {
-                processJob(jobId, requestId, request.url)
+                processJob(jobId, requestId, request.url, videoId)
             }
 
             return IngestYoutubeResponse(jobId = jobId, status = "CREATED")
@@ -71,16 +103,43 @@ class IngestYoutubeUseCase(
         }
     }
 
-    private suspend fun processJob(jobId: String, requestId: String, url: String) {
+    private suspend fun processJob(
+        jobId: String,
+        requestId: String,
+        url: String,
+        videoId: String?
+    ) {
 
         var audioPath: String? = null
 
         val jobStartTime = System.currentTimeMillis()
         var currentStage = "unknown"
 
-        var currentJob = JobState.started(jobStartTime)
+        var currentJob = jobRepository.findById(jobId)
+            ?: throw IllegalStateException("Job not found: $jobId")
+
+        currentJob = currentJob.copy(videoId = videoId)
 
         try {
+            // ✅ DOUBLE-CHECK CORRETO
+            if (videoId != null) {
+                val existing = jobRepository.findWithIdByVideoId(videoId)
+
+                if (existing != null) {
+                    val (existingJobId, _) = existing
+
+                    if (existingJobId != jobId) {
+                        logger.info(
+                            "event=ingest_cache_hit_double_check jobId={} videoId={} existingJobId={}",
+                            jobId,
+                            videoId,
+                            existingJobId
+                        )
+                        return
+                    }
+                }
+            }
+
             // ---------------- DOWNLOAD ----------------
             currentStage = "download"
             checkCanceled(jobId, currentStage, requestId, jobStartTime)
@@ -94,6 +153,13 @@ class IngestYoutubeUseCase(
 
             currentJob = currentJob.copy(title = ingestionResult.title)
             jobRepository.update(jobId, currentJob)
+
+            logger.info(
+                "event=job_title_persist_attempt jobId={} videoId={} title={}",
+                jobId,
+                currentJob.videoId,
+                currentJob.title
+            )
 
             val downloadDuration = System.currentTimeMillis() - downloadStart
             recordStepSuccess("download", jobId, requestId, downloadDuration)
@@ -135,16 +201,12 @@ class IngestYoutubeUseCase(
             micrometer.recordSummarization(summarizationDuration)
             micrometer.recordStage("summary", summarizationDuration)
 
-            // CORREÇÃO 1: extrair STRING do resultado
-            val summaryText = summaryResult.summary
-
             val finalState = currentJob.markDone(
                 transcription = transcriptionResult.text,
-                summary = summaryText,
+                summary = summaryResult.summary,
                 finishedAt = System.currentTimeMillis()
             )
 
-            currentJob = finalState
             jobRepository.update(jobId, finalState)
 
             val totalDuration = System.currentTimeMillis() - jobStartTime
@@ -159,76 +221,10 @@ class IngestYoutubeUseCase(
             )
 
             micrometer.recordTotal(totalDuration)
-
             metrics.incrementSucceeded()
             micrometer.incrementSucceeded()
 
-
-        } catch (ex: JobCanceledException) {
-
-            val finishedAt = System.currentTimeMillis()
-            val totalDuration = System.currentTimeMillis() - jobStartTime
-
-            val canceledState = currentJob.markCanceled(finishedAt)
-            jobRepository.update(jobId, canceledState)
-
-            currentJob = canceledState
-
-            StructuredLogger.log(
-                logger = logger,
-                event = "job_canceled_finalized",
-                jobId = jobId,
-                requestId = requestId,
-                status = "CANCELED",
-                durationMs = totalDuration,
-                extra = mapOf("stage" to currentStage)
-            )
-
-            metrics.incrementCanceled()
-            micrometer.incrementCanceled()
-
-            return
-        }
-        catch (ex: Exception) {
-
-            val rootCause = unwrap(ex)
-            val errorType = ErrorClassifier.classify(
-                throwable = rootCause,
-                exitCode = extractExitCode(rootCause),
-                message = rootCause.message
-            )
-
-            val failedAt = System.currentTimeMillis()
-            val totalDuration = failedAt - jobStartTime
-
-            val failedState = currentJob.markFailed(
-                errorType = errorType,
-                errorMessage = ex.message ?: "unknown",
-                finishedAt = failedAt
-            )
-
-            currentJob = failedState
-            jobRepository.update(jobId, failedState)
-
-            StructuredLogger.log(
-                logger = logger,
-                event = "job_failed",
-                jobId = jobId,
-                requestId = requestId,
-                status = "FAILED",
-                durationMs = totalDuration,
-                errorType = errorType.name,
-                extra = mapOf(
-                    "stage" to currentStage,
-                    "message" to (ex.message ?: "unknown")
-                )
-            )
-
-            metrics.incrementFailed(errorType)
-            micrometer.incrementFailed(errorType)
-
         } finally {
-
             audioPath?.let {
                 val file = File(it)
                 if (file.exists()) file.delete()
@@ -238,27 +234,8 @@ class IngestYoutubeUseCase(
         }
     }
 
-    private fun checkCanceled(
-        jobId: String,
-        stage: String,
-        requestId: String,
-        jobStartTime: Long
-    ) {
+    private fun checkCanceled(jobId: String, stage: String, requestId: String, jobStartTime: Long) {
         if (jobRepository.isCanceled(jobId)) {
-
-            val now = System.currentTimeMillis()
-            val totalDuration = now - jobStartTime
-
-            StructuredLogger.log(
-                logger = logger,
-                event = "job_cancel_detected",
-                jobId = jobId,
-                requestId = requestId,
-                status = "CANCELED",
-                durationMs = totalDuration,
-                extra = mapOf("stage" to stage)
-            )
-
             throw JobCanceledException()
         }
     }
@@ -277,7 +254,6 @@ class IngestYoutubeUseCase(
     private fun prepareTextForSummarization(text: String): String {
         val maxChars = 100_000
         if (text.length <= maxChars) return text
-
         val cut = text.take(maxChars)
         val lastSpace = cut.lastIndexOf(' ')
         return if (lastSpace > 0) cut.substring(0, lastSpace) else cut
@@ -308,9 +284,7 @@ class IngestYoutubeUseCase(
 
     private fun unwrap(e: Throwable): Throwable {
         var current = e
-        while (current.cause != null) {
-            current = current.cause!!
-        }
+        while (current.cause != null) current = current.cause!!
         return current
     }
 

@@ -26,6 +26,7 @@ dependencies {
     implementation("org.slf4j:slf4j-simple:2.0.13")
     implementation("org.postgresql:postgresql:42.7.3")
     implementation("org.flywaydb:flyway-core:9.22.3")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.17.0")
 
     implementation("io.micrometer:micrometer-registry-prometheus:1.12.5")
 
