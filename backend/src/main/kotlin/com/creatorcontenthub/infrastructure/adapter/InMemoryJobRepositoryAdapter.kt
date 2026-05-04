@@ -17,6 +17,10 @@ class InMemoryJobRepository : JobRepository {
         store[jobId] = job
     }
 
+    override fun delete(jobId: String) {
+        store.remove(jobId)
+    }
+
     override fun findById(jobId: String): JobState? {
         return store[jobId]
     }

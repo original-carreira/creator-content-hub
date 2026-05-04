@@ -11,7 +11,8 @@ data class JobState(
     val transcription: String? = null,
     val transcriptionCompletedAt: Long? = null,
     val summary: String? = null,
-    val summaryCompletedAt: Long? = null
+    val summaryCompletedAt: Long? = null,
+    val title: String? = null
 ) {
 
     init {

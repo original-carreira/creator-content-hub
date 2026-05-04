@@ -1,5 +1,6 @@
 package com.creatorcontenthub.infrastructure.adapter
 
+import com.creatorcontenthub.application.dto.IngestionResult
 import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.application.port.VideoIngestionPort
 import com.creatorcontenthub.domain.exception.DownloadTimeoutException
@@ -31,7 +32,7 @@ class YtDlpVideoIngestionAdapter(
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
-    override suspend fun ingest(url: String, jobId: String): String {
+    override suspend fun ingest(url: String, jobId: String): IngestionResult {
 
         val audioDir = File(outputDir, "audio").apply {
             if (!exists() && !mkdirs()) {
@@ -42,6 +43,35 @@ class YtDlpVideoIngestionAdapter(
         val outputPathTemplate = "${audioDir.absolutePath}/$jobId.%(ext)s"
 
         val ytDlpCommand = resolveCommand()
+
+        // =============================
+        // EXTRAIR TÍTULO DO VÍDEO
+        // =============================
+        val title = try {
+            val process = ProcessBuilder(
+                ytDlpCommand,
+                "--print", "title",
+                "--cookies-from-browser", "firefox",
+                url
+            ).redirectErrorStream(true)
+                .start()
+
+            val output = process.inputStream.bufferedReader().readText().trim()
+
+            val exitCode = process.waitFor()
+
+            if (exitCode != 0 || output.isBlank()) {
+                logger.warn("event=title_fetch_failed jobId={} exitCode={} output={}", jobId, exitCode, output)
+                null
+            } else {
+                output.lineSequence().firstOrNull()
+            }
+
+        } catch (e: Exception) {
+            logger.warn("event=title_fetch_exception jobId={} message={}", jobId, e.message)
+            null
+        }
+        val outputLines = Collections.synchronizedList(mutableListOf<String>())
 
         RetryUtil.retry(
             maxAttempts = 3,
@@ -66,7 +96,6 @@ class YtDlpVideoIngestionAdapter(
             cleanupPreviousArtifacts(audioDir, jobId)
             var process: Process? = null
             var readerThread: Thread? = null
-            val outputLines = Collections.synchronizedList(mutableListOf<String>())
 
             try {
 
@@ -239,7 +268,12 @@ class YtDlpVideoIngestionAdapter(
             outputFile.absolutePath
         )
 
-        return outputFile.absolutePath
+        val finalTitle = title ?: extractTitleFromOutput(outputLines)
+
+        return IngestionResult(
+            audioPath = outputFile.absolutePath,
+            title = finalTitle
+        )
     }
 
     private fun resolveCommand(): String {
@@ -263,5 +297,14 @@ class YtDlpVideoIngestionAdapter(
                 logger.warn("event=cleanup_previous_artifact jobId={} file={}", jobId, file.name)
             }
         }
+    }
+
+    private fun extractTitleFromOutput(outputLines: List<String>): String? {
+        return outputLines
+            .firstOrNull { it.contains("[download] Destination:") }
+            ?.substringAfter("Destination:")
+            ?.trim()
+            ?.substringAfterLast("\\")
+            ?.substringBeforeLast(".")
     }
 }

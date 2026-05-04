@@ -31,25 +31,52 @@
     <!-- BUSCA -->
     <div class="search-box">
 
-        <input id="searchInput" placeholder="Buscar jobs..." />
+        <input
+                id="searchInput"
+                class="search-input"
+                placeholder="Buscar vídeos, resumos ou ID..."
+                oninput="onSearchInput(this.value)"
+        />
 
-        <button class="btn-secondary" onclick="search()">Buscar</button>
+        <!-- LINHA 1 -->
+        <div class="row-actions">
+            <button class="btn-primary action-btn" onclick="search()">Buscar</button>
+            <button class="btn-secondary action-btn" onclick="loadJobs()">Jobs</button>
+            <button class="btn-secondary action-btn" onclick="clearSearch()">Limpar busca</button>
+        </div>
 
-        <button class="btn-primary" onclick="loadJobs()">Carregar Jobs</button>
+        <!-- LINHA 2 -->
+        <div class="row-actions">
+            <select id="statusFilter" class="control action-btn">
+                <option value="">Todos</option>
+                <option value="DONE">Concluído</option>
+                <option value="PROCESSING">Processando</option>
+                <option value="FAILED">Falhou</option>
+                <option value="CANCELED">Cancelado</option>
+            </select>
 
-        <button class="btn-danger" onclick="stopPolling()">Parar Atualização</button>
+            <select id="sortOrder" class="control action-btn">
+                <option value="desc">Mais recentes</option>
+                <option value="asc">Mais antigos</option>
+            </select>
 
-        <select id="statusFilter" class="control">
-            <option value="">Todos</option>
-            <option value="DONE">Concluído</option>
-            <option value="PROCESSING">Processando</option>
-            <option value="FAILED">Falhou</option>
-        </select>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="display:flex; align-items:center; gap:4px;">
+                    <input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)" />
+                    Selecionar todos
+                </label>
 
-        <select id="sortOrder" class="control">
-            <option value="desc">Mais recentes</option>
-            <option value="asc">Mais antigos</option>
-        </select>
+                <span id="selectedCount">0 selecionado(s)</span>
+            </div>
+        </div>
+
+        <!-- LINHA 3 -->
+        <div class="row-actions">
+            <button class="btn-danger action-btn" onclick="deleteSelected()">Deletar</button>
+            <button class="btn-danger action-btn" onclick="deleteAll()">Limpar tudo</button>
+        </div>
+
+
 
     </div>
 

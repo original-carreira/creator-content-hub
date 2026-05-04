@@ -2,6 +2,8 @@ package com.creatorcontenthub
 
 import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.application.usecase.CancelJobUseCase
+import com.creatorcontenthub.application.usecase.DeleteJobUseCase
+import com.creatorcontenthub.application.usecase.DeleteJobsUseCase
 import com.creatorcontenthub.controller.healthRoutes
 import com.creatorcontenthub.controller.textRoutes
 import com.creatorcontenthub.controller.exportRoutes
@@ -17,6 +19,7 @@ import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
 import com.creatorcontenthub.application.usecase.ListJobsUseCase
 import com.creatorcontenthub.application.usecase.SearchJobsUseCase
 import com.creatorcontenthub.controller.healthDbRoute
+import com.creatorcontenthub.controller.jobMutationRoutes
 import com.creatorcontenthub.controller.jobRoutes
 import com.creatorcontenthub.controller.searchRoutes
 import com.creatorcontenthub.infrastructure.adapter.YtDlpVideoIngestionAdapter
@@ -230,6 +233,9 @@ fun Application.module() {
         applicationScope.cancel()
     }
 
+    val deleteJobUseCase = DeleteJobUseCase(jobRepository)
+    val deleteJobsUseCase = DeleteJobsUseCase(jobRepository)
+
     // =============================
     // ROUTING
     // =============================
@@ -244,7 +250,9 @@ fun Application.module() {
         dataSource,
         listJobsUseCase,
         searchJobsUseCase,
-        cancelJobUseCase
+        cancelJobUseCase,
+        deleteJobUseCase,
+        deleteJobsUseCase
     )
 }
 
@@ -306,7 +314,9 @@ fun Application.configureRouting(
     dataSource: HikariDataSource,
     listJobsUseCase: ListJobsUseCase,
     searchJobsUseCase: SearchJobsUseCase,
-    cancelJobUseCase: CancelJobUseCase
+    cancelJobUseCase: CancelJobUseCase,
+    deleteJobUseCase: DeleteJobUseCase,
+    deleteJobsUseCase: DeleteJobsUseCase
 
 ) {
     routing {
@@ -316,6 +326,7 @@ fun Application.configureRouting(
         exportRoutes(exportTextUseCase)
         searchRoutes(searchJobsUseCase)
         jobRoutes(jobRepository)
+        jobMutationRoutes(deleteJobUseCase, deleteJobsUseCase)
 
         ingestRoutes(
             ingestYoutubeUseCase,

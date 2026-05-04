@@ -9,6 +9,8 @@ interface JobRepository {
 
     fun update(jobId: String, job: JobState)
 
+    fun delete(jobId: String)
+
     fun findById(jobId: String): JobState?
 
     fun updateStatus(jobId: String, status: JobStatus)

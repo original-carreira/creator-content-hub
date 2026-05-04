@@ -31,6 +31,7 @@ fun Route.jobRoutes(repository: JobRepository) {
             createdAt = job.createdAt,
             startedAt = job.startedAt,
             finishedAt = job.finishedAt,
+            title = job.title,
             transcription = job.transcription,
             summary = job.summary
         )

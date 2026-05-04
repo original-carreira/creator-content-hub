@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <title>Detalhe do Job</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="container">
+    <h2>Detalhes do Conteúdo</h2>
+
+    <div id="jobContent">Carregando...</div>
+</div>
+
+<script>
+    function getJobId() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get("jobId");
+    }
+
+    async function loadJob() {
+        const jobId = getJobId();
+
+        if (!jobId) {
+            document.getElementById("jobContent").innerText = "Job inválido";
+            return;
+        }
+
+        try {
+            const res = await fetch(`/jobs/${jobId}`);
+            const data = await res.json();
+            const job = data.data;
+
+            renderJob(job);
+
+        } catch (err) {
+            document.getElementById("jobContent").innerText = "Erro ao carregar conteúdo";
+        }
+    }
+
+    function renderJob(job) {
+        const container = document.getElementById("jobContent");
+
+        container.innerHTML = `
+            <div class="detail-block">
+                <strong>Status:</strong> ${job.status}
+            </div>
+
+            <div class="detail-block">
+                <strong>Transcription:</strong>
+                <pre id="transcription"></pre>
+            </div>
+
+            <div class="detail-block">
+                <strong>Summary:</strong>
+                <pre id="summary"></pre>
+            </div>
+        `;
+
+        // ✔ inserir conteúdo de forma segura (SEM WARNING)
+        document.getElementById("transcription").innerText =
+            job.transcription || "(vazio)";
+
+        document.getElementById("summary").innerText =
+            job.summary || "(vazio)";
+    }
+
+    loadJob();
+</script>
+
+</body>
+</html>

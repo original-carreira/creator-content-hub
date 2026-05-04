@@ -88,7 +88,12 @@ class IngestYoutubeUseCase(
 
             val downloadStart = System.currentTimeMillis()
 
-            audioPath = videoIngestionPort.ingest(url, jobId)
+            val ingestionResult = videoIngestionPort.ingest(url, jobId)
+
+            audioPath = ingestionResult.audioPath
+
+            currentJob = currentJob.copy(title = ingestionResult.title)
+            jobRepository.update(jobId, currentJob)
 
             val downloadDuration = System.currentTimeMillis() - downloadStart
             recordStepSuccess("download", jobId, requestId, downloadDuration)
