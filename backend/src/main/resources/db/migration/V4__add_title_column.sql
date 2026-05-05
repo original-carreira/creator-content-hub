@@ -1,1 +1,2 @@
--- V4 (removido - já incluído na V1)
+-- NO-OP migration (mantida por compatibilidade com histórico do Flyway)
+SELECT 1;

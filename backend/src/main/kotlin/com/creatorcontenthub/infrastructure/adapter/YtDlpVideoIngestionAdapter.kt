@@ -5,6 +5,7 @@ import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.application.port.VideoIngestionPort
 import com.creatorcontenthub.domain.exception.DownloadTimeoutException
 import com.creatorcontenthub.domain.exception.JobCanceledException
+import com.creatorcontenthub.domain.util.YoutubeUrlUtils.extractVideoId
 import com.creatorcontenthub.domain.model.JobStatus
 import com.creatorcontenthub.infrastructure.config.IngestionTimeoutConfig
 import com.creatorcontenthub.infrastructure.exception.ProcessExecutionException
@@ -249,7 +250,31 @@ class YtDlpVideoIngestionAdapter(
         )
         val videoId = extractVideoId(url)
 
-        val cachedJob = videoId?.let { jobRepository.findByVideoId(it) }
+        val rawCachedJob = videoId?.let { jobRepository.findByVideoId(it) }
+
+        val cachedJob = rawCachedJob
+            ?.takeIf { it.status.isFinal() }
+
+        if (videoId != null) {
+            when {
+                rawCachedJob == null -> {
+                    logger.info(
+                        "event=title_cache_miss jobId={} videoId={}",
+                        jobId,
+                        videoId
+                    )
+                }
+
+                rawCachedJob.status.isFinal().not() -> {
+                    logger.info(
+                        "event=title_cache_ignored_non_final jobId={} videoId={} status={}",
+                        jobId,
+                        videoId,
+                        rawCachedJob.status
+                    )
+                }
+            }
+        }
 
         val cachedTitle = cachedJob?.title
 
@@ -405,9 +430,26 @@ class YtDlpVideoIngestionAdapter(
             }
 
             val mapper = com.fasterxml.jackson.databind.ObjectMapper()
-            val node = mapper.readTree(output)
 
-            val title = node.get("title")?.asText()
+            val jsonLine = output
+                .lineSequence()
+                .firstOrNull { it.trim().startsWith("{") }
+
+            if (jsonLine == null) {
+                logger.warn(
+                    "event=title_json_not_found jobId={} output_size={}",
+                    jobId,
+                    output.length
+                )
+                return null
+            }
+
+            val node = mapper.readTree(jsonLine)
+
+            val title = node
+                .get("title")
+                ?.asText()
+                ?.takeIf { it.isNotBlank() }
 
             logger.info(
                 "event=title_json_extracted jobId={} title={}",
@@ -476,10 +518,5 @@ class YtDlpVideoIngestionAdapter(
             )
             null
         }
-    }
-
-    private fun extractVideoId(url: String): String? {
-        val regex = Regex("(?:v=|youtu\\.be/|shorts/)([a-zA-Z0-9_-]{11})")
-        return regex.find(url)?.groupValues?.get(1)
     }
 }
