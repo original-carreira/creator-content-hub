@@ -60,27 +60,31 @@ class PostgresJobRepository(
         val sql = """
             UPDATE jobs SET
                 status = ?,
+                video_id = ?,
                 finished_at = ?,
                 transcription = ?,
                 transcription_completed_at = ?,
                 summary = ?,
                 summary_completed_at = ?,
                 error_type = ?,
-                error_message = ?
+                error_message = ?,
+                title = ?
             WHERE job_id = ?
         """.trimIndent()
 
         dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
-                stmt.setString(1, job.status.name)
-                stmt.setLongOrNull(2, job.finishedAt)
-                stmt.setString(3, job.transcription)
-                stmt.setLongOrNull(4, job.transcriptionCompletedAt)
-                stmt.setString(5, job.summary)
-                stmt.setLongOrNull(6, job.summaryCompletedAt)
-                stmt.setString(7, job.errorType?.name)
-                stmt.setString(8, job.errorMessage)
-                stmt.setString(9, jobId)
+                stmt.setString(1, job.status.name)                // status
+                stmt.setString(2, job.videoId)                   // video_id
+                stmt.setLongOrNull(3, job.finishedAt)            // finished_at
+                stmt.setString(4, job.transcription)             // transcription
+                stmt.setLongOrNull(5, job.transcriptionCompletedAt)
+                stmt.setString(6, job.summary)
+                stmt.setLongOrNull(7, job.summaryCompletedAt)
+                stmt.setString(8, job.errorType?.name)
+                stmt.setString(9, job.errorMessage)
+                stmt.setString(10, job.title)                    // title
+                stmt.setString(11, jobId)                        // WHERE
 
                 stmt.executeUpdate()
             }
@@ -165,13 +169,15 @@ class PostgresJobRepository(
                         status = status,
                         createdAt = createdAt,
                         startedAt = startedAt,
+                        videoId = rs.getString("video_id"),
                         finishedAt = safeFinishedAt,
                         transcription = safeTranscription,
                         transcriptionCompletedAt = safeTranscriptionCompletedAt,
                         summary = summaryDb,
                         summaryCompletedAt = safeSummaryCompletedAt,
                         errorType = safeErrorType,
-                        errorMessage = errorMessage
+                        errorMessage = errorMessage,
+                        title = rs.getString("title")
                     )
                 }
             }
@@ -250,5 +256,177 @@ class PostgresJobRepository(
     private fun java.sql.PreparedStatement.setLongOrNull(index: Int, value: Long?) {
         if (value != null) this.setLong(index, value)
         else this.setNull(index, Types.BIGINT)
+    }
+
+    override fun findByVideoId(videoId: String): JobState? {
+        val sql = "SELECT * FROM jobs WHERE video_id = ? LIMIT 1"
+
+        dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setString(1, videoId)
+
+                stmt.executeQuery().use { rs ->
+                    if (!rs.next()) return null
+
+                    val createdAt = rs.getLong("created_at")
+                    val startedAt = rs.getLong("started_at")
+
+                    val finishedAtDb = (rs.getObject("finished_at") as? Number)?.toLong()
+                    val transcriptionCompletedAtDb = (rs.getObject("transcription_completed_at") as? Number)?.toLong()
+                    val summaryCompletedAtDb = (rs.getObject("summary_completed_at") as? Number)?.toLong()
+
+                    val status = runCatching {
+                        JobStatus.valueOf(rs.getString("status"))
+                    }.getOrElse {
+                        JobStatus.FAILED
+                    }
+
+                    var safeFinishedAt = finishedAtDb
+
+                    if (status.isFinal() && safeFinishedAt == null) {
+                        logger.warn("event=invalid_persisted_state videoId={} status={}", videoId, status)
+                        safeFinishedAt = createdAt
+                    }
+
+                    val transcriptionDb = rs.getString("transcription")
+                    val safeTranscription =
+                        if (status == JobStatus.DONE && transcriptionDb.isNullOrBlank())
+                            "[transcription missing]"
+                        else
+                            transcriptionDb
+
+                    val safeTranscriptionCompletedAt =
+                        if (!safeTranscription.isNullOrBlank())
+                            transcriptionCompletedAtDb ?: createdAt
+                        else
+                            null
+
+                    val summaryDb = rs.getString("summary")
+                    val safeSummaryCompletedAt =
+                        if (!summaryDb.isNullOrBlank())
+                            summaryCompletedAtDb ?: createdAt
+                        else
+                            null
+
+                    val rawErrorType = rs.getString("error_type")
+                    val safeErrorType =
+                        if (status == JobStatus.FAILED) {
+                            rawErrorType?.let {
+                                runCatching { ErrorType.valueOf(it) }.getOrNull()
+                            } ?: ErrorType.UNKNOWN
+                        } else null
+
+                    val errorMessage = rs.getString("error_message")
+
+                    return JobState(
+                        status = status,
+                        createdAt = createdAt,
+                        startedAt = startedAt,
+                        videoId = rs.getString("video_id"),
+                        finishedAt = safeFinishedAt,
+                        transcription = safeTranscription,
+                        transcriptionCompletedAt = safeTranscriptionCompletedAt,
+                        summary = summaryDb,
+                        summaryCompletedAt = safeSummaryCompletedAt,
+                        errorType = safeErrorType,
+                        errorMessage = errorMessage,
+                        title = rs.getString("title")
+                    )
+                }
+            }
+        }
+    }
+
+    override fun findWithIdByVideoId(videoId: String): Pair<String, JobState>? {
+        val sql = """
+        SELECT job_id, status, created_at, started_at, finished_at,
+               error_type, error_message, transcription, transcription_completed_at,
+               summary, summary_completed_at, video_id, title
+        FROM jobs
+        WHERE video_id = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+    """.trimIndent()
+
+        dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setString(1, videoId)
+
+                val rs = stmt.executeQuery()
+
+                if (rs.next()) {
+                    val jobId = rs.getString("job_id")
+
+                    val createdAt = rs.getLong("created_at")
+                    val startedAt = rs.getLong("started_at")
+
+                    val finishedAtDb = (rs.getObject("finished_at") as? Number)?.toLong()
+                    val transcriptionCompletedAtDb = (rs.getObject("transcription_completed_at") as? Number)?.toLong()
+                    val summaryCompletedAtDb = (rs.getObject("summary_completed_at") as? Number)?.toLong()
+
+                    val status = runCatching {
+                        JobStatus.valueOf(rs.getString("status"))
+                    }.getOrElse {
+                        JobStatus.FAILED
+                    }
+
+                    var safeFinishedAt = finishedAtDb
+
+                    if (status.isFinal() && safeFinishedAt == null) {
+                        logger.warn("event=invalid_persisted_state videoId={} status={}", videoId, status)
+                        safeFinishedAt = createdAt
+                    }
+
+                    val transcriptionDb = rs.getString("transcription")
+                    val safeTranscription =
+                        if (status == JobStatus.DONE && transcriptionDb.isNullOrBlank())
+                            "[transcription missing]"
+                        else
+                            transcriptionDb
+
+                    val safeTranscriptionCompletedAt =
+                        if (!safeTranscription.isNullOrBlank())
+                            transcriptionCompletedAtDb ?: createdAt
+                        else
+                            null
+
+                    val summaryDb = rs.getString("summary")
+                    val safeSummaryCompletedAt =
+                        if (!summaryDb.isNullOrBlank())
+                            summaryCompletedAtDb ?: createdAt
+                        else
+                            null
+
+                    val rawErrorType = rs.getString("error_type")
+                    val safeErrorType =
+                        if (status == JobStatus.FAILED) {
+                            rawErrorType?.let {
+                                runCatching { ErrorType.valueOf(it) }.getOrNull()
+                            } ?: ErrorType.UNKNOWN
+                        } else null
+
+                    val errorMessage = rs.getString("error_message")
+
+                    val jobState = JobState(
+                        status = status,
+                        createdAt = createdAt,
+                        startedAt = startedAt,
+                        videoId = rs.getString("video_id"),
+                        finishedAt = safeFinishedAt,
+                        transcription = safeTranscription,
+                        transcriptionCompletedAt = safeTranscriptionCompletedAt,
+                        summary = summaryDb,
+                        summaryCompletedAt = safeSummaryCompletedAt,
+                        errorType = safeErrorType,
+                        errorMessage = errorMessage,
+                        title = rs.getString("title")
+                    )
+
+                    return jobId to jobState
+                }
+            }
+        }
+
+        return null
     }
 }

@@ -4,6 +4,7 @@ data class JobState(
     val status: JobStatus,
     val createdAt: Long,
     val startedAt: Long,
+    val videoId: String? = null,
     val finishedAt: Long? = null,
 
     val errorType: ErrorType? = null,
@@ -131,11 +132,12 @@ data class JobState(
 
     companion object {
 
-        fun started(now: Long): JobState {
+        fun started(now: Long, videoId: String?): JobState {
             return JobState(
                 status = JobStatus.PROCESSING,
                 createdAt = now,
-                startedAt = now
+                startedAt = now,
+                videoId = videoId
             )
         }
     }
