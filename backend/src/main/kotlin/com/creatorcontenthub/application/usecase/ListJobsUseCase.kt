@@ -57,7 +57,11 @@ class ListJobsUseCase(
                 createdAt = it.createdAt,
                 finishedAt = it.finishedAt,
                 hasTranscription = it.hasTranscription,
-                hasSummary = it.hasSummary
+                hasSummary = it.hasSummary,
+
+                title = it.title,
+                thumbnailUrl = it.thumbnailUrl,
+                snippet = it.summary?.take(120)
             )
         }
 

@@ -101,6 +101,82 @@ function clearSearch() {
     lastQuery = "";
 }
 
+function resetUI() {
+
+    // ===== PARAR PROCESSOS =====
+    if (jobsRefreshTimeout) {
+        clearTimeout(jobsRefreshTimeout);
+        jobsRefreshTimeout = null;
+    }
+
+    if (ingestInterval) {
+        clearInterval(ingestInterval);
+        ingestInterval = null;
+    }
+
+    if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+    }
+
+    pollingActive = false;
+
+    // ===== RESET ESTADO GLOBAL =====
+    activeJobId = null;
+    lastQuery = "";
+    currentMode = "idle";
+
+    // ===== RESET INPUTS =====
+    const searchInput = document.getElementById("searchInput");
+    const urlInput = document.getElementById("urlInput");
+
+    if (searchInput) searchInput.value = "";
+    if (urlInput) urlInput.value = "";
+
+    // ===== RESET SELECTS =====
+    const statusFilter = document.getElementById("statusFilter");
+    const sortOrder = document.getElementById("sortOrder");
+
+    if (statusFilter) statusFilter.value = "";
+    if (sortOrder) sortOrder.value = "desc";
+
+    // ===== RESET CHECKBOXES =====
+    const selectAll = document.getElementById("selectAll");
+    if (selectAll) selectAll.checked = false;
+
+    document.querySelectorAll(".select-item").forEach(cb => {
+        cb.checked = false;
+    });
+
+    updateSelectedCount();
+
+    // ===== RESET UI =====
+    const resultsEl = document.getElementById("results");
+    const detailsEl = document.getElementById("details");
+    const statusEl = document.getElementById("status");
+    const ingestStatusEl = document.getElementById("ingestStatus");
+
+    if (resultsEl) resultsEl.innerHTML = "";
+    if (detailsEl) detailsEl.innerHTML = "";
+    if (statusEl) statusEl.innerText = "";
+    if (ingestStatusEl) ingestStatusEl.innerText = "";
+
+}
+
+function clearUrlInput() {
+    const urlInput = document.getElementById("urlInput");
+    const ingestStatus = document.getElementById("ingestStatus");
+
+    if (urlInput) {
+        urlInput.value = "";
+    }
+
+    // opcional: limpar mensagem de ingest (sem afetar estado global)
+    if (ingestStatus) {
+        ingestStatus.innerText = "";
+    }
+}
+
 function getStatusLabel(status) {
     if (!status) return "—";
 
@@ -160,24 +236,42 @@ function renderResults(items) {
         };
 
         div.innerHTML = `
-            <div class="result-header">
-                <input type="checkbox"
-                       class="select-item"
-                       data-id="${item.jobId}" />
-            </div>
+            <div style="display:flex; gap:10px; align-items:flex-start;">
 
-            <div class="result-title">
-                ${item.title ? item.title : "(sem título)"}
-            </div>
+                <!-- THUMBNAIL -->
+                <div style="flex-shrink:0;">
+                    <img 
+                        src="${item.thumbnailUrl || ''}" 
+                        alt="thumb"
+                        style="width:120px; height:90px; object-fit:cover; border-radius:6px; background:#eee;"
+                        onerror="this.style.display='none'"
+                    />
+                </div>
 
-            <div class="result-snippet">
-                ${item.snippet ? item.snippet : "(sem snippet)"}
-            </div>
+                <!-- CONTEÚDO -->
+                <div style="flex:1;">
 
-            <div class="result-meta">
-                <span class="meta-status">${getStatusLabel(item.status)}</span>
-                <span class="meta-date">${new Date(item.createdAt).toLocaleString()}</span>
-                ${item.finalScore ? `<span class="meta-score">Score: ${item.finalScore.toFixed(2)}</span>` : ""}
+                    <div class="result-header">
+                        <input type="checkbox"
+                                class="select-item"
+                                data-id="${item.jobId}" />
+                    </div>
+
+                    <div class="result-title">
+                        ${item.title ? item.title : "(sem título)"}
+                    </div>
+
+                    <div class="result-snippet">
+                        ${item.snippet ? item.snippet : "(sem snippet)"}
+                    </div>
+
+                    <div class="result-meta">
+                        <span class="meta-status">${getStatusLabel(item.status)}</span>
+                        <span class="meta-date">${new Date(item.createdAt).toLocaleString()}</span>
+                        ${item.finalScore ? `<span class="meta-score">Score: ${item.finalScore.toFixed(2)}</span>` : ""}
+                    </div>
+
+                </div>
             </div>
         `;
 

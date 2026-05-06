@@ -156,7 +156,7 @@ fun Route.ingestRoutes(
         }
 
         try {
-            val response = listJobsUseCase.execute(
+            val result = listJobsUseCase.execute(
                 status = status,
                 from = from,
                 to = to,
@@ -165,8 +165,7 @@ fun Route.ingestRoutes(
                 limit = limit,
                 offset = offset
             )
-
-            call.respondSuccess(response)
+            call.respondSuccess(result)
 
         } catch (ex: IllegalArgumentException) {
 

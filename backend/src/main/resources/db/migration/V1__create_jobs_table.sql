@@ -20,6 +20,11 @@ CREATE TABLE jobs (
                       summary TEXT,
                       summary_completed_at BIGINT,
 
+                      transcription_path TEXT,
+                      summary_path TEXT,
+                      audio_path TEXT,
+                      thumbnail_url TEXT,
+
                       error_type TEXT,
                       error_message TEXT
 );

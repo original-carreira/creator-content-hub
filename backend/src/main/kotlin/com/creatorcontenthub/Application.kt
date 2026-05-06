@@ -41,6 +41,7 @@ import com.creatorcontenthub.infrastructure.metrics.HikariMetrics
 import com.creatorcontenthub.infrastructure.metrics.JvmMetricsConfig
 import com.creatorcontenthub.infrastructure.metrics.PrometheusRegistry
 import com.creatorcontenthub.infrastructure.metrics.SearchMetrics
+import com.creatorcontenthub.infrastructure.storage.FileStorageService
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -178,6 +179,8 @@ fun Application.module() {
     File("$outputDir/transcription").mkdirs()
     File("$outputDir/temp").mkdirs()
 
+    val fileStorageService = FileStorageService("$outputDir/jobs")
+
     val videoIngestionAdapter = YtDlpVideoIngestionAdapter(
         configuredPath = ytDlpPath,
         outputDir = outputDir,
@@ -219,7 +222,8 @@ fun Application.module() {
         concurrencyController,
         acquireTimeoutMillis,
         applicationScope,
-        com.creatorcontenthub.infrastructure.metrics.IngestionMicrometerMetrics()
+        com.creatorcontenthub.infrastructure.metrics.IngestionMicrometerMetrics(),
+        fileStorageService
     )
 
     val cancelJobUseCase = CancelJobUseCase(jobRepository)
@@ -321,7 +325,7 @@ fun Application.configureRouting(
         healthRoutes()
         healthDbRoute(dataSource)
         textRoutes(processTextUseCase)
-        exportRoutes(exportTextUseCase)
+        exportRoutes(exportTextUseCase, jobRepository)
         searchRoutes(searchJobsUseCase)
         jobRoutes(jobRepository)
         jobMutationRoutes(deleteJobUseCase, deleteJobsUseCase)

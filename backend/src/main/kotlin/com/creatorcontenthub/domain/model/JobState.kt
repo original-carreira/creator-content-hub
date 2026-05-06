@@ -13,7 +13,12 @@ data class JobState(
     val transcriptionCompletedAt: Long? = null,
     val summary: String? = null,
     val summaryCompletedAt: Long? = null,
-    val title: String? = null
+    val title: String? = null,
+    val thumbnailUrl: String? = null,
+
+    val transcriptionPath: String? = null,
+    val summaryPath: String? = null,
+    val audioPath: String? = null
 ) {
 
     init {
@@ -126,6 +131,16 @@ data class JobState(
         if (summary == null) {
             require(summaryCompletedAt == null) {
                 "summaryCompletedAt cannot exist without summary"
+            }
+        }
+
+        if (status == JobStatus.DONE) {
+            require(!transcriptionPath.isNullOrBlank()) {
+                "DONE state must contain transcriptionPath"
+            }
+
+            require(!summaryPath.isNullOrBlank()) {
+                "DONE state must contain summaryPath"
             }
         }
     }
