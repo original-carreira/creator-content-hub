@@ -10,5 +10,6 @@ data class JobResponse(
     val finishedAt: Long?,
     val transcription: String?,
     val summary: String?,
-    val title: String? = null
+    val title: String? = null,
+    val thumbnailUrl: String? = null
 )

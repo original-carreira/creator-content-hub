@@ -24,9 +24,13 @@ class PostgresJobRepository(
         val sql = """
             INSERT INTO jobs (
                 job_id, status, created_at, started_at, finished_at,
-                transcription, transcription_completed_at, summary, summary_completed_at,
+                transcription, transcription_completed_at,
+                summary, summary_completed_at,
+                transcription_path, summary_path, audio_path,
+                thumbnail_url,
                 error_type, error_message
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()
 
         dataSource.connection.use { conn ->
@@ -41,8 +45,15 @@ class PostgresJobRepository(
                 stmt.setLongOrNull(7, job.transcriptionCompletedAt)
                 stmt.setString(8, job.summary)
                 stmt.setLongOrNull(9, job.summaryCompletedAt)
-                stmt.setString(10, job.errorType?.name)
-                stmt.setString(11, job.errorMessage)
+
+                stmt.setString(10, job.transcriptionPath)
+                stmt.setString(11, job.summaryPath)
+                stmt.setString(12, job.audioPath)
+
+                stmt.setString(13, job.thumbnailUrl)
+
+                stmt.setString(14, job.errorType?.name)
+                stmt.setString(15, job.errorMessage)
 
                 stmt.executeUpdate()
             }
@@ -68,23 +79,34 @@ class PostgresJobRepository(
                 summary_completed_at = ?,
                 error_type = ?,
                 error_message = ?,
-                title = ?
+                title = ?,
+                thumbnail_url = ?,
+                transcription_path = ?,
+                summary_path = ?,
+                audio_path = ?
             WHERE job_id = ?
         """.trimIndent()
 
         dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
-                stmt.setString(1, job.status.name)                // status
-                stmt.setString(2, job.videoId)                   // video_id
-                stmt.setLongOrNull(3, job.finishedAt)            // finished_at
-                stmt.setString(4, job.transcription)             // transcription
+                stmt.setString(1, job.status.name)
+                stmt.setString(2, job.videoId)
+                stmt.setLongOrNull(3, job.finishedAt)
+                stmt.setString(4, job.transcription)
                 stmt.setLongOrNull(5, job.transcriptionCompletedAt)
                 stmt.setString(6, job.summary)
                 stmt.setLongOrNull(7, job.summaryCompletedAt)
                 stmt.setString(8, job.errorType?.name)
                 stmt.setString(9, job.errorMessage)
-                stmt.setString(10, job.title)                    // title
-                stmt.setString(11, jobId)                        // WHERE
+                stmt.setString(10, job.title)
+
+                stmt.setString(11, job.thumbnailUrl)
+
+                stmt.setString(12, job.transcriptionPath)
+                stmt.setString(13, job.summaryPath)
+                stmt.setString(14, job.audioPath)
+
+                stmt.setString(15, jobId)
 
                 stmt.executeUpdate()
             }
@@ -177,7 +199,11 @@ class PostgresJobRepository(
                         summaryCompletedAt = safeSummaryCompletedAt,
                         errorType = safeErrorType,
                         errorMessage = errorMessage,
-                        title = rs.getString("title")
+                        title = rs.getString("title"),
+                        thumbnailUrl = rs.getString("thumbnail_url")?.takeIf { it.isNotBlank() },
+                        transcriptionPath = rs.getString("transcription_path")?.takeIf { it.isNotBlank() },
+                        summaryPath = rs.getString("summary_path")?.takeIf { it.isNotBlank() },
+                        audioPath = rs.getString("audio_path")?.takeIf { it.isNotBlank() }
                     )
                 }
             }
@@ -330,7 +356,11 @@ class PostgresJobRepository(
                         summaryCompletedAt = safeSummaryCompletedAt,
                         errorType = safeErrorType,
                         errorMessage = errorMessage,
-                        title = rs.getString("title")
+                        title = rs.getString("title"),
+                        thumbnailUrl = rs.getString("thumbnail_url")?.takeIf { it.isNotBlank() },
+                        transcriptionPath = rs.getString("transcription_path")?.takeIf { it.isNotBlank() },
+                        summaryPath = rs.getString("summary_path")?.takeIf { it.isNotBlank() },
+                        audioPath = rs.getString("audio_path")?.takeIf { it.isNotBlank() }
                     )
                 }
             }
@@ -340,8 +370,12 @@ class PostgresJobRepository(
     override fun findWithIdByVideoId(videoId: String): Pair<String, JobState>? {
         val sql = """
         SELECT job_id, status, created_at, started_at, finished_at,
-               error_type, error_message, transcription, transcription_completed_at,
-               summary, summary_completed_at, video_id, title
+               error_type, error_message,
+               transcription, transcription_completed_at,
+               summary, summary_completed_at,
+               video_id, title,
+               transcription_path, summary_path, audio_path,
+               thumbnail_url
         FROM jobs
         WHERE video_id = ?
         ORDER BY created_at DESC
@@ -419,7 +453,11 @@ class PostgresJobRepository(
                         summaryCompletedAt = safeSummaryCompletedAt,
                         errorType = safeErrorType,
                         errorMessage = errorMessage,
-                        title = rs.getString("title")
+                        title = rs.getString("title"),
+                        thumbnailUrl = rs.getString("thumbnail_url")?.takeIf { it.isNotBlank() },
+                        transcriptionPath = rs.getString("transcription_path")?.takeIf { it.isNotBlank() },
+                        summaryPath = rs.getString("summary_path")?.takeIf { it.isNotBlank() },
+                        audioPath = rs.getString("audio_path")?.takeIf { it.isNotBlank() }
                     )
 
                     return jobId to jobState

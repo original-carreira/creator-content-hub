@@ -38,7 +38,9 @@ class PostgresJobQueryRepository(
                 created_at,
                 finished_at,
                 transcription,
-                summary
+                summary,
+                title,
+                thumbnail_url
             FROM jobs
             WHERE 
                 (? IS NULL OR status = ?)
@@ -155,7 +157,11 @@ class PostgresJobQueryRepository(
             createdAt = rs.getLong("created_at"),
             finishedAt = rs.getLongOrNull("finished_at"),
             hasTranscription = !rs.getString("transcription").isNullOrBlank(),
-            hasSummary = !rs.getString("summary").isNullOrBlank()
+            hasSummary = !rs.getString("summary").isNullOrBlank(),
+
+            title = rs.getString("title"),
+            thumbnailUrl = rs.getString("thumbnail_url"),
+            summary = rs.getString("summary")
         )
     }
 

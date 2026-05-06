@@ -15,13 +15,23 @@
 
         <input id="urlInput" class="input-url" placeholder="Cole a URL do vídeo (YouTube)" />
 
-        <button id="ingestBtn" class="btn-primary" onclick="ingest()">
-            Processar
-        </button>
+        <div class="ingest-actions">
 
-        <button class="btn-danger" onclick="stopPolling()">
-            Parar Processamento
-        </button>
+            <div class="ingest-actions-top">
+                <button id="ingestBtn" class="btn-primary" onclick="ingest()">
+                    Processar
+                </button>
+
+                <button class="btn-danger" onclick="stopPolling()">
+                    Parar Processamento
+                </button>
+            </div>
+
+            <button class="btn-secondary btn-clear-url" onclick="clearUrlInput()">
+                Limpar URL
+            </button>
+
+        </div>
 
     </div>
 
@@ -73,7 +83,7 @@
         <!-- LINHA 3 -->
         <div class="row-actions">
             <button class="btn-danger action-btn" onclick="deleteSelected()">Deletar</button>
-            <button class="btn-danger action-btn" onclick="deleteAll()">Limpar tudo</button>
+            <button class="btn-danger action-btn" onclick="resetUI()">Limpar tudo</button>
         </div>
 
 

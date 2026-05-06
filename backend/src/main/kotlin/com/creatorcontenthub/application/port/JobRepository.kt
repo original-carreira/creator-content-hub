@@ -22,4 +22,5 @@ interface JobRepository {
     fun findByVideoId(videoId: String): JobState?
 
     fun findWithIdByVideoId(videoId: String): Pair<String, JobState>?
+
 }

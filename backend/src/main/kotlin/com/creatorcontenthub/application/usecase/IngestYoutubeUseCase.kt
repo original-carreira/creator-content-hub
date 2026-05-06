@@ -11,6 +11,7 @@ import com.creatorcontenthub.domain.util.YoutubeUrlUtils.extractVideoId
 import com.creatorcontenthub.infrastructure.logging.StructuredLogger
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
 import com.creatorcontenthub.infrastructure.metrics.IngestionMicrometerMetrics
+import com.creatorcontenthub.infrastructure.storage.FileStorageService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.io.File
@@ -25,7 +26,8 @@ class IngestYoutubeUseCase(
     private val concurrencyControl: ConcurrencyControlPort,
     private val acquireTimeoutMillis: Long,
     private val scope: CoroutineScope,
-    private val micrometer: IngestionMicrometerMetrics
+    private val micrometer: IngestionMicrometerMetrics,
+    private val fileStorageService: FileStorageService
 ) {
 
     private val logger = StructuredLogger.logger(javaClass)
@@ -120,6 +122,21 @@ class IngestYoutubeUseCase(
 
         currentJob = currentJob.copy(videoId = videoId)
 
+        val thumbnailUrl = videoId?.let {
+            "https://img.youtube.com/vi/$it/hqdefault.jpg"
+        }
+
+        currentJob = currentJob.copy(thumbnailUrl = thumbnailUrl)
+
+        jobRepository.update(jobId, currentJob)
+
+        logger.info(
+            "event=thumbnail_resolved jobId={} videoId={} thumbnailUrl={}",
+            jobId,
+            videoId,
+            thumbnailUrl
+        )
+
         try {
             // ✅ DOUBLE-CHECK CORRETO
             if (videoId != null) {
@@ -201,10 +218,43 @@ class IngestYoutubeUseCase(
             micrometer.recordSummarization(summarizationDuration)
             micrometer.recordStage("summary", summarizationDuration)
 
-            val finalState = currentJob.markDone(
+            // ================= FILE PERSISTENCE =================
+            val transcriptionPath = fileStorageService.saveTranscription(
+                jobId,
+                transcriptionResult.text
+            )
+
+            val summaryPath = fileStorageService.saveSummary(
+                jobId,
+                summaryResult.summary
+            )
+
+            val audioStoredPath = runCatching {
+                fileStorageService.saveAudio(jobId, audioPath)
+            }.getOrNull()
+
+            logger.info(
+                "event=file_saved jobId={} transcriptionPath={} summaryPath={} audioPath={}",
+                jobId,
+                transcriptionPath,
+                summaryPath,
+                audioStoredPath
+            )
+
+            val finishedAt = System.currentTimeMillis()
+
+            val finalState = currentJob.copy(
+                status = JobStatus.DONE,
                 transcription = transcriptionResult.text,
                 summary = summaryResult.summary,
-                finishedAt = System.currentTimeMillis()
+                transcriptionCompletedAt = finishedAt,
+                summaryCompletedAt = finishedAt,
+                finishedAt = finishedAt,
+                transcriptionPath = transcriptionPath,
+                summaryPath = summaryPath,
+                audioPath = audioStoredPath,
+                errorType = null,
+                errorMessage = null
             )
 
             jobRepository.update(jobId, finalState)
