@@ -6,6 +6,7 @@ import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.application.usecase.CancelJobUseCase
 import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
 import com.creatorcontenthub.application.usecase.ListJobsUseCase
+import com.creatorcontenthub.application.usecase.ResumeJobUseCase
 import com.creatorcontenthub.domain.exception.TooManyRequestsException
 import com.creatorcontenthub.infrastructure.http.respondError
 import com.creatorcontenthub.infrastructure.http.respondSuccess
@@ -22,7 +23,8 @@ fun Route.ingestRoutes(
     useCase: IngestYoutubeUseCase,
     jobRepository: JobRepository,
     listJobsUseCase: ListJobsUseCase,
-    cancelJobUseCase: CancelJobUseCase
+    cancelJobUseCase: CancelJobUseCase,
+    resumeJobUseCase: ResumeJobUseCase
 ) {
     val logger = LoggerFactory.getLogger("IngestRoutes")
     post("/ingest/youtube") {
@@ -226,6 +228,37 @@ fun Route.ingestRoutes(
             call.respondError(
                 HttpStatusCode.InternalServerError,
                 "Failed to cancel job"
+            )
+        }
+    }
+
+    post("/jobs/{jobId}/resume") {
+
+        val jobId = call.parameters["jobId"]
+
+        if (jobId.isNullOrBlank()) {
+            call.respondError(HttpStatusCode.BadRequest, "Invalid jobId")
+            return@post
+        }
+
+        try {
+
+            val response = resumeJobUseCase.execute(jobId)
+
+            call.respondSuccess(response)
+
+        } catch (ex: IllegalArgumentException) {
+
+            call.respondError(
+                HttpStatusCode.NotFound,
+                ex.message ?: "Job not found"
+            )
+
+        } catch (ex: Exception) {
+
+            call.respondError(
+                HttpStatusCode.InternalServerError,
+                "Failed to resume job"
             )
         }
     }

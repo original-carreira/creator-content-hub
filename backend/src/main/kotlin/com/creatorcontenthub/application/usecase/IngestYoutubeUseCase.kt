@@ -7,6 +7,7 @@ import com.creatorcontenthub.domain.exception.*
 import com.creatorcontenthub.domain.model.*
 import com.creatorcontenthub.infrastructure.exception.ProcessExecutionException
 import com.creatorcontenthub.application.resilience.ErrorClassifier
+import com.creatorcontenthub.application.service.ExistingJobResolver
 import com.creatorcontenthub.domain.util.YoutubeUrlUtils.extractVideoId
 import com.creatorcontenthub.infrastructure.logging.StructuredLogger
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
@@ -28,7 +29,8 @@ class IngestYoutubeUseCase(
     private val scope: CoroutineScope,
     private val micrometer: IngestionMicrometerMetrics,
     private val fileStorageService: FileStorageService,
-    private val jobProcessor: com.creatorcontenthub.application.pipeline.JobProcessor
+    private val jobProcessor: com.creatorcontenthub.application.pipeline.JobProcessor,
+    private val existingJobResolver: ExistingJobResolver
 ) {
 
     private val logger = StructuredLogger.logger(javaClass)
@@ -59,23 +61,48 @@ class IngestYoutubeUseCase(
 
             // CACHE CHECK SEGURO (NULL SAFE)
             if (videoId != null) {
+
                 val existing = jobRepository.findWithIdByVideoId(videoId)
 
                 if (existing != null) {
+
                     val (existingJobId, existingJob) = existing
 
+                    val decision = existingJobResolver.resolve(existingJob)
+
                     logger.info(
-                        "event=ingest_cache_hit_pre jobId={} videoId={} existingJobId={} status={}",
+                        "event=existing_job_detected jobId={} videoId={} existingJobId={} status={} stage={} decision={}",
                         jobId,
                         videoId,
                         existingJobId,
-                        existingJob.status
+                        existingJob.status,
+                        existingJob.stage,
+                        decision
                     )
 
-                    return IngestYoutubeResponse(
-                        jobId = existingJobId,
-                        status = existingJob.status.name
-                    )
+                    when (decision) {
+
+                        ExistingJobDecision.REUSE_COMPLETED,
+                        ExistingJobDecision.RETURN_PROCESSING,
+                        ExistingJobDecision.ALLOW_RESUME -> {
+
+                            return IngestYoutubeResponse(
+                                jobId = existingJobId,
+                                status = existingJob.status.name,
+                                stage = existingJob.stage.name,
+                                reused = true,
+                                resumeAvailable =
+                                    decision == ExistingJobDecision.ALLOW_RESUME
+                            )
+                        }
+
+                        ExistingJobDecision.CREATE_NEW -> {
+                            logger.info(
+                                "event=create_new_job_allowed videoId={}",
+                                videoId
+                            )
+                        }
+                    }
                 }
             }
 
@@ -98,7 +125,13 @@ class IngestYoutubeUseCase(
                 processJob(jobId, requestId, request.url, videoId)
             }
 
-            return IngestYoutubeResponse(jobId = jobId, status = "CREATED")
+            return IngestYoutubeResponse(
+                jobId = jobId,
+                status = "CREATED",
+                stage = JobStage.CREATED.name,
+                reused = false,
+                resumeAvailable = false
+            )
 
         } catch (ex: Exception) {
             concurrencyControl.release()
