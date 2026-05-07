@@ -92,7 +92,9 @@ class IngestYoutubeUseCase(
                                 stage = existingJob.stage.name,
                                 reused = true,
                                 resumeAvailable =
-                                    decision == ExistingJobDecision.ALLOW_RESUME
+                                    decision == ExistingJobDecision.ALLOW_RESUME &&
+                                            existingJob.stage != JobStage.UNKNOWN &&
+                                            existingJob.stage != JobStage.COMPLETED
                             )
                         }
 

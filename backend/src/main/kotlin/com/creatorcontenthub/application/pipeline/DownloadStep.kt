@@ -11,6 +11,8 @@ class DownloadStep(
     private val jobRepository: JobRepository
 ) : PipelineStep {
 
+    override val supportedStage = JobStage.CREATED
+
     override suspend fun execute(
         jobId: String,
         job: JobState

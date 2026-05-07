@@ -5,6 +5,7 @@ import com.creatorcontenthub.application.usecase.CancelJobUseCase
 import com.creatorcontenthub.application.usecase.DeleteJobUseCase
 import com.creatorcontenthub.application.usecase.DeleteJobsUseCase
 import com.creatorcontenthub.application.pipeline.DownloadStep
+import com.creatorcontenthub.application.pipeline.FinalizeJobStep
 import com.creatorcontenthub.application.pipeline.TranscriptionStep
 import com.creatorcontenthub.application.pipeline.SummaryStep
 import com.creatorcontenthub.application.pipeline.JobProcessor
@@ -215,11 +216,17 @@ fun Application.module() {
 
     val transcriptionStep = TranscriptionStep(
         transcriptionPort = transcriptionAdapter,
-        jobRepository = jobRepository
+        jobRepository = jobRepository,
+        fileStorageService = fileStorageService
     )
 
     val summaryStep = SummaryStep(
         summarizationPort = summarizationAdapter,
+        jobRepository = jobRepository,
+        fileStorageService = fileStorageService
+    )
+
+    val finalizeJobStep = FinalizeJobStep(
         jobRepository = jobRepository
     )
 
@@ -230,7 +237,8 @@ fun Application.module() {
         steps = listOf(
             downloadStep,
             transcriptionStep,
-            summaryStep
+            summaryStep,
+            finalizeJobStep
         )
     )
 
@@ -262,7 +270,11 @@ fun Application.module() {
 
     val cancelJobUseCase = CancelJobUseCase(jobRepository)
 
-    val resumeJobUseCase = ResumeJobUseCase(jobRepository)
+    val resumeJobUseCase = ResumeJobUseCase(
+        repository = jobRepository,
+        jobProcessor = jobProcessor,
+        scope = applicationScope
+    )
 
     environment.monitor.subscribe(ApplicationStopped) {
         log.info("Shutting down application...")
