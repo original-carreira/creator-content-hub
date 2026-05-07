@@ -1,6 +1,7 @@
 package com.creatorcontenthub.infrastructure.store
 
 import com.creatorcontenthub.domain.model.ErrorType
+import com.creatorcontenthub.domain.model.JobStage
 import com.creatorcontenthub.domain.model.JobState
 import com.creatorcontenthub.domain.model.JobStatus
 import java.util.concurrent.ConcurrentHashMap
@@ -16,6 +17,7 @@ class InMemoryJobStatusStore {
 
         store[jobId] = JobState(
             status = JobStatus.PROCESSING,
+            stage = JobStage.CREATED,
             createdAt = now,
             startedAt = now,
             finishedAt = null,
@@ -42,6 +44,7 @@ class InMemoryJobStatusStore {
 
             current.copy(
                 status = JobStatus.DONE,
+                stage = JobStage.COMPLETED,
                 finishedAt = now,
                 transcription = transcription,
                 transcriptionCompletedAt = now,

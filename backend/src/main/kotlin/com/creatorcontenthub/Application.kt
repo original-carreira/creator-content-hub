@@ -4,6 +4,10 @@ import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.application.usecase.CancelJobUseCase
 import com.creatorcontenthub.application.usecase.DeleteJobUseCase
 import com.creatorcontenthub.application.usecase.DeleteJobsUseCase
+import com.creatorcontenthub.application.pipeline.DownloadStep
+import com.creatorcontenthub.application.pipeline.TranscriptionStep
+import com.creatorcontenthub.application.pipeline.SummaryStep
+import com.creatorcontenthub.application.pipeline.JobProcessor
 import com.creatorcontenthub.controller.healthRoutes
 import com.creatorcontenthub.controller.textRoutes
 import com.creatorcontenthub.controller.exportRoutes
@@ -202,6 +206,30 @@ fun Application.module() {
     )
     val summarizationAdapter = FallbackSummarizationAdapter()
 
+    val downloadStep = DownloadStep(
+        ingestionPort = videoIngestionAdapter,
+        jobRepository = jobRepository
+    )
+
+    val transcriptionStep = TranscriptionStep(
+        transcriptionPort = transcriptionAdapter,
+        jobRepository = jobRepository
+    )
+
+    val summaryStep = SummaryStep(
+        summarizationPort = summarizationAdapter,
+        jobRepository = jobRepository
+    )
+
+    val jobProcessor = JobProcessor(
+        jobRepository = jobRepository,
+        steps = listOf(
+            downloadStep,
+            transcriptionStep,
+            summaryStep
+        )
+    )
+
     // =============================
     // CONCORRENCIA / BACKPRESSURE
     // =============================
@@ -223,7 +251,8 @@ fun Application.module() {
         acquireTimeoutMillis,
         applicationScope,
         com.creatorcontenthub.infrastructure.metrics.IngestionMicrometerMetrics(),
-        fileStorageService
+        fileStorageService,
+        jobProcessor
     )
 
     val cancelJobUseCase = CancelJobUseCase(jobRepository)

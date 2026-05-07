@@ -6,6 +6,7 @@ CREATE TABLE jobs (
                       job_id TEXT PRIMARY KEY,
 
                       status TEXT NOT NULL,
+                      stage TEXT NOT NULL,
 
                       created_at BIGINT NOT NULL,
                       started_at BIGINT NOT NULL,

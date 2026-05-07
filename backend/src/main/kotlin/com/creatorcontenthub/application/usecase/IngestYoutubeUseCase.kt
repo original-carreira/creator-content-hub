@@ -27,7 +27,8 @@ class IngestYoutubeUseCase(
     private val acquireTimeoutMillis: Long,
     private val scope: CoroutineScope,
     private val micrometer: IngestionMicrometerMetrics,
-    private val fileStorageService: FileStorageService
+    private val fileStorageService: FileStorageService,
+    private val jobProcessor: com.creatorcontenthub.application.pipeline.JobProcessor
 ) {
 
     private val logger = StructuredLogger.logger(javaClass)
@@ -56,7 +57,7 @@ class IngestYoutubeUseCase(
                 videoId
             )
 
-            // ✅ CACHE CHECK SEGURO (NULL SAFE)
+            // CACHE CHECK SEGURO (NULL SAFE)
             if (videoId != null) {
                 val existing = jobRepository.findWithIdByVideoId(videoId)
 
@@ -168,7 +169,12 @@ class IngestYoutubeUseCase(
 
             audioPath = ingestionResult.audioPath
 
-            currentJob = currentJob.copy(title = ingestionResult.title)
+            currentJob = currentJob.copy(
+                stage = JobStage.DOWNLOADED,
+                title = ingestionResult.title,
+                audioPath = audioPath
+            )
+
             jobRepository.update(jobId, currentJob)
 
             logger.info(
@@ -196,6 +202,15 @@ class IngestYoutubeUseCase(
             val transcriptionResult = transcriptionPort.transcribe(audioFile.absolutePath, jobId)
 
             val transcriptionDuration = System.currentTimeMillis() - transcriptionStart
+            currentJob = currentJob.copy(
+                stage = JobStage.TRANSCRIBED,
+                transcription = transcriptionResult.text,
+                transcriptionCompletedAt = System.currentTimeMillis()
+            )
+
+            jobRepository.update(jobId, currentJob)
+
+
             recordStepSuccess("transcription", jobId, requestId, transcriptionDuration)
             metrics.recordTranscriptionTime(transcriptionDuration)
             micrometer.recordTranscription(transcriptionDuration)
@@ -213,6 +228,13 @@ class IngestYoutubeUseCase(
             val summaryResult = summarizationPort.summarize(safeText)
 
             val summarizationDuration = System.currentTimeMillis() - summarizationStart
+            currentJob = currentJob.copy(
+                summary = summaryResult.summary,
+                summaryCompletedAt = System.currentTimeMillis()
+            )
+
+            jobRepository.update(jobId, currentJob)
+
             recordStepSuccess("summary", jobId, requestId, summarizationDuration)
             metrics.recordSummarizationTime(summarizationDuration)
             micrometer.recordSummarization(summarizationDuration)
@@ -243,10 +265,14 @@ class IngestYoutubeUseCase(
 
             val finishedAt = System.currentTimeMillis()
 
+            currentJob = jobRepository.findById(jobId)
+                ?: throw IllegalStateException("Job not found before finalization")
+
             val finalState = currentJob.copy(
                 status = JobStatus.DONE,
-                transcription = transcriptionResult.text,
-                summary = summaryResult.summary,
+                stage = JobStage.COMPLETED,
+                transcription = currentJob.transcription,
+                summary = currentJob.summary,
                 transcriptionCompletedAt = finishedAt,
                 summaryCompletedAt = finishedAt,
                 finishedAt = finishedAt,
