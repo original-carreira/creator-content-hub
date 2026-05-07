@@ -8,6 +8,7 @@ import com.creatorcontenthub.application.pipeline.DownloadStep
 import com.creatorcontenthub.application.pipeline.TranscriptionStep
 import com.creatorcontenthub.application.pipeline.SummaryStep
 import com.creatorcontenthub.application.pipeline.JobProcessor
+import com.creatorcontenthub.application.service.ExistingJobResolver
 import com.creatorcontenthub.controller.healthRoutes
 import com.creatorcontenthub.controller.textRoutes
 import com.creatorcontenthub.controller.exportRoutes
@@ -21,6 +22,7 @@ import com.creatorcontenthub.application.usecase.ProcessTextUseCase
 import com.creatorcontenthub.application.usecase.ExportTextUseCase
 import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
 import com.creatorcontenthub.application.usecase.ListJobsUseCase
+import com.creatorcontenthub.application.usecase.ResumeJobUseCase
 import com.creatorcontenthub.application.usecase.SearchJobsUseCase
 import com.creatorcontenthub.controller.healthDbRoute
 import com.creatorcontenthub.controller.jobMutationRoutes
@@ -221,6 +223,8 @@ fun Application.module() {
         jobRepository = jobRepository
     )
 
+    val existingJobResolver = ExistingJobResolver()
+
     val jobProcessor = JobProcessor(
         jobRepository = jobRepository,
         steps = listOf(
@@ -252,10 +256,13 @@ fun Application.module() {
         applicationScope,
         com.creatorcontenthub.infrastructure.metrics.IngestionMicrometerMetrics(),
         fileStorageService,
-        jobProcessor
+        jobProcessor,
+        existingJobResolver
     )
 
     val cancelJobUseCase = CancelJobUseCase(jobRepository)
+
+    val resumeJobUseCase = ResumeJobUseCase(jobRepository)
 
     environment.monitor.subscribe(ApplicationStopped) {
         log.info("Shutting down application...")
@@ -282,6 +289,7 @@ fun Application.module() {
         listJobsUseCase,
         searchJobsUseCase,
         cancelJobUseCase,
+        resumeJobUseCase,
         deleteJobUseCase,
         deleteJobsUseCase
     )
@@ -346,8 +354,9 @@ fun Application.configureRouting(
     listJobsUseCase: ListJobsUseCase,
     searchJobsUseCase: SearchJobsUseCase,
     cancelJobUseCase: CancelJobUseCase,
+    resumeJobUseCase: ResumeJobUseCase,
     deleteJobUseCase: DeleteJobUseCase,
-    deleteJobsUseCase: DeleteJobsUseCase
+    deleteJobsUseCase: DeleteJobsUseCase,
 
 ) {
     routing {
@@ -363,7 +372,9 @@ fun Application.configureRouting(
             ingestYoutubeUseCase,
             jobRepository,
             listJobsUseCase,
-            cancelJobUseCase
+            cancelJobUseCase,
+            resumeJobUseCase
+
         )
 
         metricsRoutes(

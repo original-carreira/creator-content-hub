@@ -3,13 +3,10 @@ package com.creatorcontenthub.application.dto
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class IngestYoutubeResponse(
+data class ResumeJobResponse(
     val jobId: String,
     val status: String,
-
-    val stage: String? = null,
-
-    val reused: Boolean = false,
-
-    val resumeAvailable: Boolean = false
+    val stage: String,
+    val resumed: Boolean,
+    val message: String
 )
