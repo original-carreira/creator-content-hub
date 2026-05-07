@@ -2,6 +2,7 @@ package com.creatorcontenthub.infrastructure.adapter
 
 import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.domain.model.ErrorType
+import com.creatorcontenthub.domain.model.JobStage
 import com.creatorcontenthub.domain.model.JobState
 import com.creatorcontenthub.domain.model.JobStatus
 import org.slf4j.LoggerFactory
@@ -23,37 +24,38 @@ class PostgresJobRepository(
 
         val sql = """
             INSERT INTO jobs (
-                job_id, status, created_at, started_at, finished_at,
+                job_id, status, stage, created_at, started_at, finished_at,
                 transcription, transcription_completed_at,
                 summary, summary_completed_at,
                 transcription_path, summary_path, audio_path,
                 thumbnail_url,
                 error_type, error_message
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()
 
         dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
                 stmt.setString(1, jobId)
                 stmt.setString(2, job.status.name)
-                stmt.setLong(3, job.createdAt)
-                stmt.setLong(4, job.startedAt)
+                stmt.setString(3, job.stage.name)
+                stmt.setLong(4, job.createdAt)
+                stmt.setLong(5, job.startedAt)
 
-                stmt.setLongOrNull(5, job.finishedAt)
-                stmt.setString(6, job.transcription)
-                stmt.setLongOrNull(7, job.transcriptionCompletedAt)
-                stmt.setString(8, job.summary)
-                stmt.setLongOrNull(9, job.summaryCompletedAt)
+                stmt.setLongOrNull(6, job.finishedAt)
+                stmt.setString(7, job.transcription)
+                stmt.setLongOrNull(8, job.transcriptionCompletedAt)
+                stmt.setString(9, job.summary)
+                stmt.setLongOrNull(10, job.summaryCompletedAt)
 
-                stmt.setString(10, job.transcriptionPath)
-                stmt.setString(11, job.summaryPath)
-                stmt.setString(12, job.audioPath)
+                stmt.setString(11, job.transcriptionPath)
+                stmt.setString(12, job.summaryPath)
+                stmt.setString(13, job.audioPath)
 
-                stmt.setString(13, job.thumbnailUrl)
+                stmt.setString(14, job.thumbnailUrl)
 
-                stmt.setString(14, job.errorType?.name)
-                stmt.setString(15, job.errorMessage)
+                stmt.setString(15, job.errorType?.name)
+                stmt.setString(16, job.errorMessage)
 
                 stmt.executeUpdate()
             }
@@ -71,6 +73,7 @@ class PostgresJobRepository(
         val sql = """
             UPDATE jobs SET
                 status = ?,
+                stage = ?,
                 video_id = ?,
                 finished_at = ?,
                 transcription = ?,
@@ -90,23 +93,24 @@ class PostgresJobRepository(
         dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
                 stmt.setString(1, job.status.name)
-                stmt.setString(2, job.videoId)
-                stmt.setLongOrNull(3, job.finishedAt)
-                stmt.setString(4, job.transcription)
-                stmt.setLongOrNull(5, job.transcriptionCompletedAt)
-                stmt.setString(6, job.summary)
-                stmt.setLongOrNull(7, job.summaryCompletedAt)
-                stmt.setString(8, job.errorType?.name)
-                stmt.setString(9, job.errorMessage)
-                stmt.setString(10, job.title)
+                stmt.setString(2, job.stage.name)
+                stmt.setString(3, job.videoId)
+                stmt.setLongOrNull(4, job.finishedAt)
+                stmt.setString(5, job.transcription)
+                stmt.setLongOrNull(6, job.transcriptionCompletedAt)
+                stmt.setString(7, job.summary)
+                stmt.setLongOrNull(8, job.summaryCompletedAt)
+                stmt.setString(9, job.errorType?.name)
+                stmt.setString(10, job.errorMessage)
+                stmt.setString(11, job.title)
 
-                stmt.setString(11, job.thumbnailUrl)
+                stmt.setString(12, job.thumbnailUrl)
 
-                stmt.setString(12, job.transcriptionPath)
-                stmt.setString(13, job.summaryPath)
-                stmt.setString(14, job.audioPath)
+                stmt.setString(13, job.transcriptionPath)
+                stmt.setString(14, job.summaryPath)
+                stmt.setString(15, job.audioPath)
 
-                stmt.setString(15, jobId)
+                stmt.setString(16, jobId)
 
                 stmt.executeUpdate()
             }
@@ -189,6 +193,11 @@ class PostgresJobRepository(
 
                     return JobState(
                         status = status,
+                        stage = runCatching {
+                            JobStage.valueOf(rs.getString("stage"))
+                        }.getOrElse {
+                            JobStage.UNKNOWN
+                        },
                         createdAt = createdAt,
                         startedAt = startedAt,
                         videoId = rs.getString("video_id"),
@@ -346,6 +355,11 @@ class PostgresJobRepository(
 
                     return JobState(
                         status = status,
+                        stage = runCatching {
+                            JobStage.valueOf(rs.getString("stage"))
+                        }.getOrElse {
+                            JobStage.UNKNOWN
+                        },
                         createdAt = createdAt,
                         startedAt = startedAt,
                         videoId = rs.getString("video_id"),
@@ -443,6 +457,11 @@ class PostgresJobRepository(
 
                     val jobState = JobState(
                         status = status,
+                        stage = runCatching {
+                            JobStage.valueOf(rs.getString("stage"))
+                        }.getOrElse {
+                            JobStage.UNKNOWN
+                        },
                         createdAt = createdAt,
                         startedAt = startedAt,
                         videoId = rs.getString("video_id"),

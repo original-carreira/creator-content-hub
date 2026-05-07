@@ -1,7 +1,10 @@
 package com.creatorcontenthub.domain.model
 
+import com.creatorcontenthub.domain.model.JobStage
+
 data class JobState(
     val status: JobStatus,
+    val stage: JobStage,
     val createdAt: Long,
     val startedAt: Long,
     val videoId: String? = null,
@@ -57,36 +60,27 @@ data class JobState(
             }
         }
 
-        // DONE precisa de transcription
-        if (status == JobStatus.DONE) {
+        // COMPLETED consistency
+        if (stage == JobStage.COMPLETED) {
+
+            require(status == JobStatus.DONE) {
+                "COMPLETED stage requires DONE status"
+            }
+
             require(!transcription.isNullOrBlank()) {
-                "DONE state must contain transcription"
+                "COMPLETED stage requires transcription"
             }
 
             require(!summary.isNullOrBlank()) {
-                "DONE state must contain summary"
-            }
-        }
-
-        // FAILED não pode ter dados derivados
-        if (status == JobStatus.FAILED) {
-            require(transcription == null) {
-                "FAILED state cannot contain transcription"
+                "COMPLETED stage requires summary"
             }
 
-            require(summary == null) {
-                "FAILED state cannot contain summary"
-            }
-        }
-
-        // CANCELED não pode ter dados derivados
-        if (status == JobStatus.CANCELED) {
-            require(transcription == null) {
-                "CANCELED state cannot contain transcription"
+            require(!transcriptionPath.isNullOrBlank()) {
+                "COMPLETED stage requires transcriptionPath"
             }
 
-            require(summary == null) {
-                "CANCELED state cannot contain summary"
+            require(!summaryPath.isNullOrBlank()) {
+                "COMPLETED stage requires summaryPath"
             }
         }
 
@@ -134,15 +128,6 @@ data class JobState(
             }
         }
 
-        if (status == JobStatus.DONE) {
-            require(!transcriptionPath.isNullOrBlank()) {
-                "DONE state must contain transcriptionPath"
-            }
-
-            require(!summaryPath.isNullOrBlank()) {
-                "DONE state must contain summaryPath"
-            }
-        }
     }
 
     companion object {
@@ -150,9 +135,22 @@ data class JobState(
         fun started(now: Long, videoId: String?): JobState {
             return JobState(
                 status = JobStatus.PROCESSING,
+                stage = JobStage.CREATED,
                 createdAt = now,
                 startedAt = now,
-                videoId = videoId
+                videoId = videoId,
+                finishedAt = null,
+                errorType = null,
+                errorMessage = null,
+                transcription = null,
+                transcriptionCompletedAt = null,
+                summary = null,
+                summaryCompletedAt = null,
+                title = null,
+                thumbnailUrl = null,
+                transcriptionPath = null,
+                summaryPath = null,
+                audioPath = null
             )
         }
     }
@@ -202,11 +200,5 @@ data class JobState(
             summary = null,
             summaryCompletedAt = null
         )
-    }
-
-    private fun JobStatus.isFinal(): Boolean {
-        return this == JobStatus.DONE ||
-                this == JobStatus.FAILED ||
-                this == JobStatus.CANCELED
     }
 }
