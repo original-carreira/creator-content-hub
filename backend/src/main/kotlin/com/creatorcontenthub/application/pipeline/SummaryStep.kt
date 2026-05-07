@@ -6,11 +6,15 @@ import com.creatorcontenthub.application.port.SummarizationPort
 import com.creatorcontenthub.domain.model.JobStage
 import com.creatorcontenthub.domain.model.JobState
 import com.creatorcontenthub.domain.model.JobStatus
+import com.creatorcontenthub.infrastructure.storage.FileStorageService
 
 class SummaryStep(
     private val summarizationPort: SummarizationPort,
-    private val jobRepository: JobRepository
+    private val jobRepository: JobRepository,
+    private val fileStorageService: FileStorageService
 ) : PipelineStep {
+
+    override val supportedStage = JobStage.TRANSCRIBED
 
     override suspend fun execute(
         jobId: String,
@@ -31,12 +35,17 @@ class SummaryStep(
 
         val now = System.currentTimeMillis()
 
+        val summaryPath = fileStorageService.saveSummary(
+            jobId = jobId,
+            content = result.summary
+        )
+
         val updated = job.copy(
-            status = JobStatus.DONE,
-            stage = JobStage.COMPLETED,
+            status = JobStatus.PROCESSING,
+            stage = JobStage.SUMMARIZED,
             summary = result.summary,
-            summaryCompletedAt = now,
-            finishedAt = now
+            summaryPath = summaryPath,
+            summaryCompletedAt = now
         )
 
         jobRepository.update(jobId, updated)
