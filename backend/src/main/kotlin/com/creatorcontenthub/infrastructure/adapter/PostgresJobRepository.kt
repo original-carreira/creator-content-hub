@@ -24,14 +24,26 @@ class PostgresJobRepository(
 
         val sql = """
             INSERT INTO jobs (
-                job_id, status, stage, created_at, started_at, finished_at,
-                transcription, transcription_completed_at,
-                summary, summary_completed_at,
-                transcription_path, summary_path, audio_path,
+                job_id,
+                status,
+                stage,
+                created_at,
+                started_at,
+                finished_at,
+                video_id,
+                title,
+                transcription,
+                transcription_completed_at,
+                summary,
+                summary_completed_at,
+                transcription_path,
+                summary_path,
+                audio_path,
                 thumbnail_url,
-                error_type, error_message
+                error_type,
+                error_message
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()
 
         dataSource.connection.use { conn ->
@@ -43,19 +55,22 @@ class PostgresJobRepository(
                 stmt.setLong(5, job.startedAt)
 
                 stmt.setLongOrNull(6, job.finishedAt)
-                stmt.setString(7, job.transcription)
-                stmt.setLongOrNull(8, job.transcriptionCompletedAt)
-                stmt.setString(9, job.summary)
-                stmt.setLongOrNull(10, job.summaryCompletedAt)
+                stmt.setString(7, job.videoId)
+                stmt.setString(8, job.title)
 
-                stmt.setString(11, job.transcriptionPath)
-                stmt.setString(12, job.summaryPath)
-                stmt.setString(13, job.audioPath)
+                stmt.setString(9, job.transcription)
+                stmt.setLongOrNull(10, job.transcriptionCompletedAt)
+                stmt.setString(11, job.summary)
+                stmt.setLongOrNull(12, job.summaryCompletedAt)
 
-                stmt.setString(14, job.thumbnailUrl)
+                stmt.setString(13, job.transcriptionPath)
+                stmt.setString(14, job.summaryPath)
+                stmt.setString(15, job.audioPath)
 
-                stmt.setString(15, job.errorType?.name)
-                stmt.setString(16, job.errorMessage)
+                stmt.setString(16, job.thumbnailUrl)
+
+                stmt.setString(17, job.errorType?.name)
+                stmt.setString(18, job.errorMessage)
 
                 stmt.executeUpdate()
             }

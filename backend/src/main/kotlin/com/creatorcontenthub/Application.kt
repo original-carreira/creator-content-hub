@@ -25,6 +25,7 @@ import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
 import com.creatorcontenthub.application.usecase.ListJobsUseCase
 import com.creatorcontenthub.application.usecase.ResumeJobUseCase
 import com.creatorcontenthub.application.usecase.SearchJobsUseCase
+import com.creatorcontenthub.application.worker.QueueWorker
 import com.creatorcontenthub.controller.healthDbRoute
 import com.creatorcontenthub.controller.jobMutationRoutes
 import com.creatorcontenthub.controller.jobRoutes
@@ -49,6 +50,7 @@ import com.creatorcontenthub.infrastructure.metrics.JvmMetricsConfig
 import com.creatorcontenthub.infrastructure.metrics.PrometheusRegistry
 import com.creatorcontenthub.infrastructure.metrics.SearchMetrics
 import com.creatorcontenthub.infrastructure.storage.FileStorageService
+import com.creatorcontenthub.infrastructure.adapter.PostgresJobQueueRepository
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -68,6 +70,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import java.io.File
 
 
@@ -139,6 +142,9 @@ fun Application.module() {
     val hikariMetrics = HikariMetrics(dataSource)
 
     val jobRepository = PostgresJobRepository(dataSource)
+
+    val jobQueueRepository = PostgresJobQueueRepository(dataSource)
+
     environment.monitor.subscribe(ApplicationStopping) {
         (dataSource as? HikariDataSource)?.close()
     }
@@ -242,6 +248,12 @@ fun Application.module() {
         )
     )
 
+    val queueWorker = QueueWorker(
+        queueRepository = jobQueueRepository,
+        jobRepository = jobRepository,
+        jobProcessor = jobProcessor
+    )
+
     // =============================
     // CONCORRENCIA / BACKPRESSURE
     // =============================
@@ -253,6 +265,10 @@ fun Application.module() {
 
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    applicationScope.launch {
+        queueWorker.start()
+    }
+
     val ingestYoutubeUseCase = IngestYoutubeUseCase(
         videoIngestionAdapter,
         transcriptionAdapter,
@@ -261,11 +277,11 @@ fun Application.module() {
         ingestionMetrics,
         concurrencyController,
         acquireTimeoutMillis,
-        applicationScope,
         com.creatorcontenthub.infrastructure.metrics.IngestionMicrometerMetrics(),
         fileStorageService,
         jobProcessor,
-        existingJobResolver
+        existingJobResolver,
+        jobQueueRepository
     )
 
     val cancelJobUseCase = CancelJobUseCase(jobRepository)
