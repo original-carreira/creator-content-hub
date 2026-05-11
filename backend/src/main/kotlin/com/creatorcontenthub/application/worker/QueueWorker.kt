@@ -5,6 +5,7 @@ import com.creatorcontenthub.application.port.JobQueueRepository
 import com.creatorcontenthub.application.port.JobRepository
 import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
+import java.util.UUID
 
 class QueueWorker(
     private val queueRepository: JobQueueRepository,
@@ -13,36 +14,55 @@ class QueueWorker(
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
+    private val workerId = UUID.randomUUID().toString()
 
     suspend fun start() {
 
-        logger.info("event=worker_started")
+        logger.info(
+            "event=worker_started workerId={}",
+            workerId
+        )
 
         while (true) {
 
+            var queueId: Long? = null
+
             try {
 
-                val item = queueRepository.findNextPending()
+                val startedAt = System.currentTimeMillis()
+
+                logger.info(
+                    "event=queue_claim_attempt workerId={}",
+                    workerId
+                )
+
+                val item = queueRepository.claimNextPending(
+                    workerId = workerId,
+                    startedAt = startedAt
+                )
 
                 if (item == null) {
+
+                    logger.info(
+                        "event=queue_claim_empty workerId={}",
+                        workerId
+                    )
+
                     delay(2000)
                     continue
                 }
 
-                val queueId = item.id
-                    ?: throw IllegalStateException("Queue item without id")
-
-                val startedAt = System.currentTimeMillis()
-
-                queueRepository.markProcessing(
-                    queueId = queueId,
-                    startedAt = startedAt
-                )
+                queueId = item.id
+                    ?: throw IllegalStateException(
+                        "Queue item without id"
+                    )
 
                 logger.info(
-                    "event=worker_claimed_job queueId={} jobId={}",
+                    "event=queue_claim_success workerId={} queueId={} jobId={} attempts={}",
+                    workerId,
                     queueId,
-                    item.jobId
+                    item.jobId,
+                    item.attempts
                 )
 
                 val state = jobRepository.findById(item.jobId)
@@ -63,7 +83,8 @@ class QueueWorker(
                 )
 
                 logger.info(
-                    "event=worker_completed_job queueId={} jobId={} stage={}",
+                    "event=worker_completed_job workerId={} queueId={} jobId={} stage={}",
+                    workerId,
                     queueId,
                     item.jobId,
                     result.stage
@@ -72,10 +93,21 @@ class QueueWorker(
             } catch (ex: Exception) {
 
                 logger.error(
-                    "event=worker_failed_job message={}",
+                    "event=worker_failed_job workerId={} queueId={} message={}",
+                    workerId,
+                    queueId,
                     ex.message,
                     ex
                 )
+
+                queueId?.let {
+
+                    queueRepository.markFailed(
+                        queueId = it,
+                        completedAt = System.currentTimeMillis(),
+                        errorMessage = ex.message
+                    )
+                }
 
                 delay(2000)
             }

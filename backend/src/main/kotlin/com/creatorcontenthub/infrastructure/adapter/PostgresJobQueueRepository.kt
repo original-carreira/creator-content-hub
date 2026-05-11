@@ -42,62 +42,74 @@ class PostgresJobQueueRepository(
         }
     }
 
-    override fun findNextPending(): JobQueueItem? {
-
-        val sql = """
-        SELECT *
-        FROM job_queue
-        WHERE status = 'PENDING'
-        ORDER BY created_at ASC
-        LIMIT 1
-    """.trimIndent()
-
-        dataSource.connection.use { conn ->
-            conn.prepareStatement(sql).use { stmt ->
-
-                stmt.executeQuery().use { rs ->
-
-                    if (!rs.next()) {
-                        return null
-                    }
-
-                    return JobQueueItem(
-                        id = rs.getLong("id"),
-                        jobId = rs.getString("job_id"),
-                        status = QueueStatus.valueOf(rs.getString("status")),
-                        createdAt = rs.getLong("created_at"),
-                        startedAt = rs.getLong("started_at")
-                            .takeIf { !rs.wasNull() },
-                        completedAt = rs.getLong("completed_at")
-                            .takeIf { !rs.wasNull() },
-                        attempts = rs.getInt("attempts"),
-                        errorMessage = rs.getString("error_message")
-                    )
-                }
-            }
-        }
-    }
-
-    override fun markProcessing(
-        queueId: Long,
+    override fun claimNextPending(
+        workerId: String,
         startedAt: Long
-    ) {
+    ): JobQueueItem? {
 
         val sql = """
         UPDATE job_queue
-        SET status = 'PROCESSING',
+        SET
+            status = 'PROCESSING',
             started_at = ?,
+            claimed_by = ?,
+            last_heartbeat_at = ?,
             attempts = attempts + 1
-        WHERE id = ?
+        WHERE id = (
+            SELECT id
+            FROM job_queue
+            WHERE status = 'PENDING'
+            ORDER BY created_at ASC
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+        )
+        RETURNING *
     """.trimIndent()
 
         dataSource.connection.use { conn ->
-            conn.prepareStatement(sql).use { stmt ->
 
-                stmt.setLong(1, startedAt)
-                stmt.setLong(2, queueId)
+            conn.autoCommit = false
 
-                stmt.executeUpdate()
+            try {
+
+                conn.prepareStatement(sql).use { stmt ->
+
+                    stmt.setLong(1, startedAt)
+                    stmt.setString(2, workerId)
+                    stmt.setLong(3, startedAt)
+
+                    stmt.executeQuery().use { rs ->
+
+                        if (!rs.next()) {
+                            conn.commit()
+                            return null
+                        }
+
+                        val item = JobQueueItem(
+                            id = rs.getLong("id"),
+                            jobId = rs.getString("job_id"),
+                            status = QueueStatus.valueOf(
+                                rs.getString("status")
+                            ),
+                            createdAt = rs.getLong("created_at"),
+                            startedAt = rs.getLong("started_at")
+                                .takeIf { !rs.wasNull() },
+                            completedAt = rs.getLong("completed_at")
+                                .takeIf { !rs.wasNull() },
+                            attempts = rs.getInt("attempts"),
+                            errorMessage = rs.getString("error_message")
+                        )
+
+                        conn.commit()
+
+                        return item
+                    }
+                }
+
+            } catch (ex: Exception) {
+
+                conn.rollback()
+                throw ex
             }
         }
     }
