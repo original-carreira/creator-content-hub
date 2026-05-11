@@ -6,8 +6,10 @@ import com.creatorcontenthub.application.port.*
 import com.creatorcontenthub.domain.exception.*
 import com.creatorcontenthub.domain.model.*
 import com.creatorcontenthub.infrastructure.exception.ProcessExecutionException
-import com.creatorcontenthub.application.resilience.ErrorClassifier
 import com.creatorcontenthub.application.service.ExistingJobResolver
+import com.creatorcontenthub.application.port.JobQueueRepository
+import com.creatorcontenthub.domain.model.JobQueueItem
+import com.creatorcontenthub.domain.model.QueueStatus
 import com.creatorcontenthub.domain.util.YoutubeUrlUtils.extractVideoId
 import com.creatorcontenthub.infrastructure.logging.StructuredLogger
 import com.creatorcontenthub.infrastructure.metrics.IngestionMetrics
@@ -26,11 +28,11 @@ class IngestYoutubeUseCase(
     private val metrics: IngestionMetrics,
     private val concurrencyControl: ConcurrencyControlPort,
     private val acquireTimeoutMillis: Long,
-    private val scope: CoroutineScope,
     private val micrometer: IngestionMicrometerMetrics,
     private val fileStorageService: FileStorageService,
     private val jobProcessor: com.creatorcontenthub.application.pipeline.JobProcessor,
-    private val existingJobResolver: ExistingJobResolver
+    private val existingJobResolver: ExistingJobResolver,
+    private val jobQueueRepository: JobQueueRepository,
 ) {
 
     private val logger = StructuredLogger.logger(javaClass)
@@ -108,7 +110,14 @@ class IngestYoutubeUseCase(
                 }
             }
 
-            val initialJob = JobState.started(now, videoId)
+            val thumbnailUrl = videoId?.let {
+                "https://img.youtube.com/vi/$it/hqdefault.jpg"
+            }
+
+            val initialJob = JobState.started(now, videoId).copy(
+                videoId = videoId,
+                thumbnailUrl = thumbnailUrl
+            )
 
             StructuredLogger.log(
                 logger,
@@ -123,13 +132,23 @@ class IngestYoutubeUseCase(
             metrics.incrementStarted()
             micrometer.incrementStarted()
 
-            scope.launch {
-                processJob(jobId, requestId, request.url, videoId)
-            }
+            val queueItem = JobQueueItem(
+                jobId = jobId,
+                status = QueueStatus.PENDING,
+                createdAt = System.currentTimeMillis()
+            )
+
+            jobQueueRepository.enqueue(queueItem)
+
+            logger.info(
+                "event=job_enqueued jobId={} stage={}",
+                jobId,
+                JobStage.CREATED
+            )
 
             return IngestYoutubeResponse(
                 jobId = jobId,
-                status = "CREATED",
+                status = "QUEUED",
                 stage = JobStage.CREATED.name,
                 reused = false,
                 resumeAvailable = false
@@ -138,210 +157,6 @@ class IngestYoutubeUseCase(
         } catch (ex: Exception) {
             concurrencyControl.release()
             throw ex
-        }
-    }
-
-    private suspend fun processJob(
-        jobId: String,
-        requestId: String,
-        url: String,
-        videoId: String?
-    ) {
-
-        var audioPath: String? = null
-
-        val jobStartTime = System.currentTimeMillis()
-        var currentStage = "unknown"
-
-        var currentJob = jobRepository.findById(jobId)
-            ?: throw IllegalStateException("Job not found: $jobId")
-
-        currentJob = currentJob.copy(videoId = videoId)
-
-        val thumbnailUrl = videoId?.let {
-            "https://img.youtube.com/vi/$it/hqdefault.jpg"
-        }
-
-        currentJob = currentJob.copy(thumbnailUrl = thumbnailUrl)
-
-        jobRepository.update(jobId, currentJob)
-
-        logger.info(
-            "event=thumbnail_resolved jobId={} videoId={} thumbnailUrl={}",
-            jobId,
-            videoId,
-            thumbnailUrl
-        )
-
-        try {
-            // ✅ DOUBLE-CHECK CORRETO
-            if (videoId != null) {
-                val existing = jobRepository.findWithIdByVideoId(videoId)
-
-                if (existing != null) {
-                    val (existingJobId, _) = existing
-
-                    if (existingJobId != jobId) {
-                        logger.info(
-                            "event=ingest_cache_hit_double_check jobId={} videoId={} existingJobId={}",
-                            jobId,
-                            videoId,
-                            existingJobId
-                        )
-                        return
-                    }
-                }
-            }
-
-            // ---------------- DOWNLOAD ----------------
-            currentStage = "download"
-            checkCanceled(jobId, currentStage, requestId, jobStartTime)
-            logStageStart("download", jobId, requestId)
-
-            val downloadStart = System.currentTimeMillis()
-
-            val ingestionResult = videoIngestionPort.ingest(url, jobId)
-
-            audioPath = ingestionResult.audioPath
-
-            currentJob = currentJob.copy(
-                stage = JobStage.DOWNLOADED,
-                title = ingestionResult.title,
-                audioPath = audioPath
-            )
-
-            jobRepository.update(jobId, currentJob)
-
-            logger.info(
-                "event=job_title_persist_attempt jobId={} videoId={} title={}",
-                jobId,
-                currentJob.videoId,
-                currentJob.title
-            )
-
-            val downloadDuration = System.currentTimeMillis() - downloadStart
-            recordStepSuccess("download", jobId, requestId, downloadDuration)
-            metrics.recordDownloadTime(downloadDuration)
-            micrometer.recordDownload(downloadDuration)
-            micrometer.recordStage("download", downloadDuration)
-
-            val audioFile = validateAudioFile(audioPath)
-
-            // ---------------- TRANSCRIPTION ----------------
-            currentStage = "transcription"
-            checkCanceled(jobId, currentStage, requestId, jobStartTime)
-            logStageStart("transcription", jobId, requestId)
-
-            val transcriptionStart = System.currentTimeMillis()
-
-            val transcriptionResult = transcriptionPort.transcribe(audioFile.absolutePath, jobId)
-
-            val transcriptionDuration = System.currentTimeMillis() - transcriptionStart
-            currentJob = currentJob.copy(
-                stage = JobStage.TRANSCRIBED,
-                transcription = transcriptionResult.text,
-                transcriptionCompletedAt = System.currentTimeMillis()
-            )
-
-            jobRepository.update(jobId, currentJob)
-
-
-            recordStepSuccess("transcription", jobId, requestId, transcriptionDuration)
-            metrics.recordTranscriptionTime(transcriptionDuration)
-            micrometer.recordTranscription(transcriptionDuration)
-            micrometer.recordStage("transcription", transcriptionDuration)
-
-            // ---------------- SUMMARY ----------------
-            val safeText = prepareTextForSummarization(transcriptionResult.text)
-
-            currentStage = "summary"
-            checkCanceled(jobId, currentStage, requestId, jobStartTime)
-            logStageStart("summary", jobId, requestId)
-
-            val summarizationStart = System.currentTimeMillis()
-
-            val summaryResult = summarizationPort.summarize(safeText)
-
-            val summarizationDuration = System.currentTimeMillis() - summarizationStart
-            currentJob = currentJob.copy(
-                summary = summaryResult.summary,
-                summaryCompletedAt = System.currentTimeMillis()
-            )
-
-            jobRepository.update(jobId, currentJob)
-
-            recordStepSuccess("summary", jobId, requestId, summarizationDuration)
-            metrics.recordSummarizationTime(summarizationDuration)
-            micrometer.recordSummarization(summarizationDuration)
-            micrometer.recordStage("summary", summarizationDuration)
-
-            // ================= FILE PERSISTENCE =================
-            val transcriptionPath = fileStorageService.saveTranscription(
-                jobId,
-                transcriptionResult.text
-            )
-
-            val summaryPath = fileStorageService.saveSummary(
-                jobId,
-                summaryResult.summary
-            )
-
-            val audioStoredPath = runCatching {
-                fileStorageService.saveAudio(jobId, audioPath)
-            }.getOrNull()
-
-            logger.info(
-                "event=file_saved jobId={} transcriptionPath={} summaryPath={} audioPath={}",
-                jobId,
-                transcriptionPath,
-                summaryPath,
-                audioStoredPath
-            )
-
-            val finishedAt = System.currentTimeMillis()
-
-            currentJob = jobRepository.findById(jobId)
-                ?: throw IllegalStateException("Job not found before finalization")
-
-            val finalState = currentJob.copy(
-                status = JobStatus.DONE,
-                stage = JobStage.COMPLETED,
-                transcription = currentJob.transcription,
-                summary = currentJob.summary,
-                transcriptionCompletedAt = finishedAt,
-                summaryCompletedAt = finishedAt,
-                finishedAt = finishedAt,
-                transcriptionPath = transcriptionPath,
-                summaryPath = summaryPath,
-                audioPath = audioStoredPath,
-                errorType = null,
-                errorMessage = null
-            )
-
-            jobRepository.update(jobId, finalState)
-
-            val totalDuration = System.currentTimeMillis() - jobStartTime
-
-            StructuredLogger.log(
-                logger,
-                event = "job_completed",
-                jobId = jobId,
-                requestId = requestId,
-                status = "SUCCESS",
-                durationMs = totalDuration
-            )
-
-            micrometer.recordTotal(totalDuration)
-            metrics.incrementSucceeded()
-            micrometer.incrementSucceeded()
-
-        } finally {
-            audioPath?.let {
-                val file = File(it)
-                if (file.exists()) file.delete()
-            }
-
-            concurrencyControl.release()
         }
     }
 
