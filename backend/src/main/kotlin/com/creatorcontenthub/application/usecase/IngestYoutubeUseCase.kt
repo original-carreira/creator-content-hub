@@ -17,6 +17,7 @@ import com.creatorcontenthub.infrastructure.metrics.IngestionMicrometerMetrics
 import com.creatorcontenthub.infrastructure.storage.FileStorageService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import org.postgresql.util.PSQLException
 import java.io.File
 import java.util.UUID
 
@@ -127,18 +128,63 @@ class IngestYoutubeUseCase(
                 status = "CREATED"
             )
 
-            jobRepository.create(jobId, initialJob)
+            try {
 
-            metrics.incrementStarted()
-            micrometer.incrementStarted()
+                jobRepository.create(jobId, initialJob)
 
-            val queueItem = JobQueueItem(
-                jobId = jobId,
-                status = QueueStatus.PENDING,
-                createdAt = System.currentTimeMillis()
-            )
+                metrics.incrementStarted()
+                micrometer.incrementStarted()
 
-            jobQueueRepository.enqueue(queueItem)
+                val queueItem = JobQueueItem(
+                    jobId = jobId,
+                    status = QueueStatus.PENDING,
+                    createdAt = System.currentTimeMillis()
+                )
+
+                jobQueueRepository.enqueue(queueItem)
+
+            } catch (ex: PSQLException) {
+
+                val isUniqueViolation =
+                    ex.sqlState == "23505"
+
+                if (!isUniqueViolation || videoId == null) {
+                    throw ex
+                }
+
+                logger.warn(
+                    "event=concurrent_job_create_detected videoId={} jobId={}",
+                    videoId,
+                    jobId
+                )
+
+                val existing =
+                    jobRepository.findWithIdByVideoId(videoId)
+
+                if (existing == null) {
+                    throw ex
+                }
+
+                val (existingJobId, existingJob) = existing
+
+                logger.info(
+                    "event=existing_job_recovered_after_unique_violation videoId={} existingJobId={} status={} stage={}",
+                    videoId,
+                    existingJobId,
+                    existingJob.status,
+                    existingJob.stage
+                )
+
+                return IngestYoutubeResponse(
+                    jobId = existingJobId,
+                    status = existingJob.status.name,
+                    stage = existingJob.stage.name,
+                    reused = true,
+                    resumeAvailable =
+                        existingJob.stage != JobStage.UNKNOWN &&
+                                existingJob.stage != JobStage.COMPLETED
+                )
+            }
 
             logger.info(
                 "event=job_enqueued jobId={} stage={}",

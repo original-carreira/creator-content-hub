@@ -6,11 +6,13 @@ CREATE TABLE job_queue (
                            started_at BIGINT NULL,
                            completed_at BIGINT NULL,
                            attempts INTEGER NOT NULL DEFAULT 0,
-                           error_message TEXT NULL
+                           error_message TEXT NULL,
+                           claimed_by VARCHAR(255) NULL,
+                           last_heartbeat_at BIGINT NULL
 );
 
-CREATE INDEX idx_job_queue_status
-    ON job_queue(status);
+CREATE INDEX idx_job_queue_claim
+    ON job_queue(status, created_at);
 
 CREATE INDEX idx_job_queue_job_id
     ON job_queue(job_id);

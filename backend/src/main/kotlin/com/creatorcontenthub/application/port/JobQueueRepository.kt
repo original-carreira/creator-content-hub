@@ -6,9 +6,10 @@ interface JobQueueRepository {
 
     fun enqueue(item: JobQueueItem)
 
-    fun findNextPending(): JobQueueItem?
-
-    fun markProcessing(queueId: Long, startedAt: Long)
+    fun claimNextPending(
+        workerId: String,
+        startedAt: Long
+    ): JobQueueItem?
 
     fun markCompleted(queueId: Long, completedAt: Long)
 
