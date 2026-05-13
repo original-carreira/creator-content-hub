@@ -26,6 +26,7 @@ import com.creatorcontenthub.application.usecase.ListJobsUseCase
 import com.creatorcontenthub.application.usecase.ResumeJobUseCase
 import com.creatorcontenthub.application.usecase.SearchJobsUseCase
 import com.creatorcontenthub.application.worker.QueueWorker
+import com.creatorcontenthub.application.worker.OrphanRecoveryWorker
 import com.creatorcontenthub.controller.healthDbRoute
 import com.creatorcontenthub.controller.jobMutationRoutes
 import com.creatorcontenthub.controller.jobRoutes
@@ -254,6 +255,10 @@ fun Application.module() {
         jobProcessor = jobProcessor
     )
 
+    val orphanRecoveryWorker = OrphanRecoveryWorker(
+        queueRepository = jobQueueRepository
+    )
+
     // =============================
     // CONCORRENCIA / BACKPRESSURE
     // =============================
@@ -267,6 +272,10 @@ fun Application.module() {
 
     applicationScope.launch {
         queueWorker.start()
+    }
+
+    applicationScope.launch {
+        orphanRecoveryWorker.start()
     }
 
     val ingestYoutubeUseCase = IngestYoutubeUseCase(

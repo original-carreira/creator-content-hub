@@ -82,12 +82,6 @@ class WhisperTranscriptionAdapter(
                             while (reader.readLine().also { line = it } != null) {
                                 val currentLine = line ?: break
 
-                                logger.info(
-                                    "event=whisper_output jobId={} line={}",
-                                    jobId,
-                                    currentLine
-                                )
-
                                 if (count < MAX_OUTPUT_LINES) {
                                     outputLines.add(currentLine)
                                 }

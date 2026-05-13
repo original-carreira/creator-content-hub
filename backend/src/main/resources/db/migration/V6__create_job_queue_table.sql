@@ -11,8 +11,13 @@ CREATE TABLE job_queue (
                            last_heartbeat_at BIGINT NULL
 );
 
-CREATE INDEX idx_job_queue_claim
-    ON job_queue(status, created_at);
+CREATE INDEX idx_job_queue_pending_claim
+    ON job_queue(created_at)
+    WHERE status = 'PENDING';
 
 CREATE INDEX idx_job_queue_job_id
     ON job_queue(job_id);
+
+CREATE INDEX idx_job_queue_processing_heartbeat
+    ON job_queue(last_heartbeat_at)
+    WHERE status = 'PROCESSING';

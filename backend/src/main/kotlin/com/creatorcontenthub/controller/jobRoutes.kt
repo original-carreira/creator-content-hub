@@ -159,8 +159,8 @@ fun Route.jobRoutes(repository: JobRepository) {
             return@get
         }
 
-        val transcriptionContent = transcriptionFile.readText()
-        val summaryContent = summaryFile.readText()
+        val transcriptionContent = transcriptionFile.readText(Charsets.UTF_8)
+        val summaryContent = summaryFile.readText(Charsets.UTF_8)
 
         val response = mapOf(
             "jobId" to jobId,

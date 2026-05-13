@@ -11,6 +11,26 @@ interface JobQueueRepository {
         startedAt: Long
     ): JobQueueItem?
 
+    fun updateHeartbeat(
+        queueId: Long,
+        workerId: String,
+        heartbeatAt: Long
+    ): Boolean
+
+    fun findExpiredProcessingJobs(
+        heartbeatTimeoutBefore: Long
+    ): List<JobQueueItem>
+
+    fun requeueOrphanedJob(
+        queueId: Long
+    ): Boolean
+
+    fun markFailedMaxAttempts(
+        queueId: Long,
+        completedAt: Long,
+        errorMessage: String?
+    ): Boolean
+
     fun markCompleted(queueId: Long, completedAt: Long)
 
     fun markFailed(

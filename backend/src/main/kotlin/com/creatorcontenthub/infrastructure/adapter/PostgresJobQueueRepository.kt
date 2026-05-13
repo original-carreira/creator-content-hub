@@ -97,7 +97,11 @@ class PostgresJobQueueRepository(
                             completedAt = rs.getLong("completed_at")
                                 .takeIf { !rs.wasNull() },
                             attempts = rs.getInt("attempts"),
-                            errorMessage = rs.getString("error_message")
+                            errorMessage = rs.getString("error_message"),
+                            claimedBy = rs.getString("claimed_by"),
+                            lastHeartbeatAt = rs.getLong("last_heartbeat_at")
+                                .takeIf { !rs.wasNull() }
+
                         )
 
                         conn.commit()
@@ -110,6 +114,137 @@ class PostgresJobQueueRepository(
 
                 conn.rollback()
                 throw ex
+            }
+        }
+    }
+
+    override fun updateHeartbeat(
+        queueId: Long,
+        workerId: String,
+        heartbeatAt: Long
+    ): Boolean {
+
+        val sql = """
+        UPDATE job_queue
+        SET last_heartbeat_at = ?
+        WHERE id = ?
+          AND claimed_by = ?
+          AND status = 'PROCESSING'
+    """.trimIndent()
+
+        dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
+
+                stmt.setLong(1, heartbeatAt)
+                stmt.setLong(2, queueId)
+                stmt.setString(3, workerId)
+
+                return stmt.executeUpdate() > 0
+            }
+        }
+    }
+
+    override fun findExpiredProcessingJobs(
+        heartbeatTimeoutBefore: Long
+    ): List<JobQueueItem> {
+
+        val sql = """
+        SELECT *
+        FROM job_queue
+        WHERE status = 'PROCESSING'
+          AND last_heartbeat_at IS NOT NULL
+          AND last_heartbeat_at < ?
+        ORDER BY last_heartbeat_at ASC
+    """.trimIndent()
+
+        dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
+
+                stmt.setLong(1, heartbeatTimeoutBefore)
+
+                stmt.executeQuery().use { rs ->
+
+                    val items = mutableListOf<JobQueueItem>()
+
+                    while (rs.next()) {
+
+                        items.add(
+                            JobQueueItem(
+                                id = rs.getLong("id"),
+                                jobId = rs.getString("job_id"),
+                                status = QueueStatus.valueOf(
+                                    rs.getString("status")
+                                ),
+                                createdAt = rs.getLong("created_at"),
+                                startedAt = rs.getLong("started_at")
+                                    .takeIf { !rs.wasNull() },
+                                completedAt = rs.getLong("completed_at")
+                                    .takeIf { !rs.wasNull() },
+                                attempts = rs.getInt("attempts"),
+                                errorMessage = rs.getString("error_message"),
+                                claimedBy = rs.getString("claimed_by"),
+                                lastHeartbeatAt = rs.getLong("last_heartbeat_at")
+                                    .takeIf { !rs.wasNull() }
+                            )
+                        )
+                    }
+
+                    return items
+                }
+            }
+        }
+    }
+
+    override fun requeueOrphanedJob(
+        queueId: Long
+    ): Boolean {
+
+        val sql = """
+        UPDATE job_queue
+        SET
+            status = 'PENDING',
+            claimed_by = NULL,
+            last_heartbeat_at = NULL,
+            started_at = NULL
+        WHERE id = ?
+          AND status = 'PROCESSING'
+    """.trimIndent()
+
+        dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
+
+                stmt.setLong(1, queueId)
+
+                return stmt.executeUpdate() > 0
+            }
+        }
+    }
+
+    override fun markFailedMaxAttempts(
+        queueId: Long,
+        completedAt: Long,
+        errorMessage: String?
+    ): Boolean {
+
+        val sql = """
+        UPDATE job_queue
+        SET
+            status = 'FAILED',
+            completed_at = ?,
+            error_message = ?,
+            claimed_by = NULL,
+            last_heartbeat_at = NULL
+        WHERE id = ?
+    """.trimIndent()
+
+        dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
+
+                stmt.setLong(1, completedAt)
+                stmt.setString(2, errorMessage)
+                stmt.setLong(3, queueId)
+
+                return stmt.executeUpdate() > 0
             }
         }
     }
