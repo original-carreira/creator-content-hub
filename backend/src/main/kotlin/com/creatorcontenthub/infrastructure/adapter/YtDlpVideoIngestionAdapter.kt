@@ -15,6 +15,7 @@ import com.creatorcontenthub.application.resilience.ErrorClassifier
 import com.creatorcontenthub.domain.model.ErrorType
 import org.slf4j.LoggerFactory
 import java.io.BufferedReader
+import java.nio.charset.StandardCharsets
 import java.io.File
 import java.io.InputStreamReader
 import java.util.Collections
@@ -90,7 +91,12 @@ class YtDlpVideoIngestionAdapter(
 
                 readerThread = Thread {
                     try {
-                        BufferedReader(InputStreamReader(activeProcess.inputStream)).use { reader ->
+                        BufferedReader(
+                            InputStreamReader(
+                                activeProcess.inputStream,
+                                StandardCharsets.UTF_8
+                            )
+                        ).use { reader ->
                             var line: String?
                             var count = 0
 
@@ -409,7 +415,9 @@ class YtDlpVideoIngestionAdapter(
                 .redirectErrorStream(true)
                 .start()
 
-            val output = process.inputStream.bufferedReader().readText()
+            val output = process.inputStream
+                .bufferedReader(StandardCharsets.UTF_8)
+                .readText()
 
             val exitCode = process.waitFor()
 
@@ -489,7 +497,7 @@ class YtDlpVideoIngestionAdapter(
             connection.readTimeout = 5000
 
             val response = connection.getInputStream()
-                .bufferedReader()
+                .bufferedReader(StandardCharsets.UTF_8)
                 .readText()
 
             logger.info(

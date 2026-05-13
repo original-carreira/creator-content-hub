@@ -110,7 +110,7 @@ function resetUI() {
     }
 
     if (ingestInterval) {
-        clearInterval(ingestInterval);
+        clearTimeout(ingestInterval);
         ingestInterval = null;
     }
 
@@ -448,35 +448,41 @@ function pollStatus(jobId) {
     const statusEl = document.getElementById("ingestStatus");
 
     let isRunning = true;
+    pollingActive = false;
     let attempts = 0;
     const maxAttempts = 120;
 
     const start = Date.now();
-    const maxDuration = 6 * 60 * 1000; // 6 minutos
+    const maxDuration = 6 * 60 * 1000;
 
-    // limpa qualquer intervalo anterior
+    // limpa polling anterior
     if (ingestInterval) {
-        clearInterval(ingestInterval);
+        clearTimeout(ingestInterval);
+        ingestInterval = null;
     }
 
-    ingestInterval = setInterval(async () => {
-        if (!isRunning) return;
+    async function executePoll() {
+
+        if (!isRunning) {
+            return;
+        }
 
         if (Date.now() - start > maxDuration) {
-            clearInterval(ingestInterval);
-            statusEl.innerText = "Processamento demorando mais que o esperado... (ainda em execução)";
+            statusEl.innerText =
+                "Processamento demorando mais que o esperado... (ainda em execução)";
             return;
         }
 
         attempts++;
 
         if (attempts > maxAttempts) {
-            clearInterval(ingestInterval);
-            statusEl.innerText = "Processamento demorando mais que o esperado... (ainda em execução)";
+            statusEl.innerText =
+                "Processamento demorando mais que o esperado... (ainda em execução)";
             return;
         }
 
         try {
+
             const res = await fetch(`/ingest/${jobId}`);
             const data = await res.json();
 
@@ -485,22 +491,38 @@ function pollStatus(jobId) {
             }
 
             const job = data.data;
-            const elapsedSec = Math.floor((Date.now() - start) / 1000);
+
+            const elapsedSec =
+                Math.floor((Date.now() - start) / 1000);
 
             updateIngestUI(job, elapsedSec);
 
-            if (job.status === "DONE" || job.status === "FAILED") {
+            if (
+                job.status === "DONE" ||
+                job.status === "FAILED"
+            ) {
                 isRunning = false;
-                clearInterval(ingestInterval);
+                pollingActive = true;
+                return;
             }
 
+            ingestInterval = setTimeout(
+                executePoll,
+                3000
+            );
+
         } catch (err) {
+
             console.error("Erro no polling:", err);
-            statusEl.innerText = "Erro ao acompanhar processamento";
+
+            statusEl.innerText =
+                "Erro ao acompanhar processamento";
+
             isRunning = false;
-            clearInterval(ingestInterval);
         }
-    }, 3000);
+    }
+
+    executePoll();
 }
 
 function updateIngestUI(job, elapsedSec = null) {
@@ -520,9 +542,16 @@ function updateIngestUI(job, elapsedSec = null) {
             icon = "🎧";
         }
 
-        const timeInfo = elapsedSec !== null ? ` (${elapsedSec}s)` : "";
+        const timeInfo =
+            elapsedSec !== null
+                ? ` (${elapsedSec}s)`
+                : "";
 
-        statusEl.innerText = `${icon} ${stage}${timeInfo}`;
+        const nextText = `${icon} ${stage}${timeInfo}`;
+
+        if (statusEl.innerText !== nextText) {
+            statusEl.innerText = nextText;
+        }
         return;
     }
 
@@ -567,9 +596,11 @@ async function loadJobs() {
     currentMode = "jobs";
     pollingActive = true;
 
-    resultsEl.innerHTML = "";
-    detailsEl.innerHTML = "";
-    statusEl.innerText = "Carregando jobs...";
+    if (!jobsRefreshTimeout) {
+        resultsEl.innerHTML = "";
+        detailsEl.innerHTML = "";
+        statusEl.innerText = "Carregando jobs...";
+    }
 
     try {
         // leitura segura dos filtros
@@ -643,7 +674,7 @@ async function stopPolling() {
     }
 
     if (ingestInterval) {
-        clearInterval(ingestInterval);
+        clearTimeout(ingestInterval);
     }
 
     document.getElementById("status").innerText = "Atualização pausada";

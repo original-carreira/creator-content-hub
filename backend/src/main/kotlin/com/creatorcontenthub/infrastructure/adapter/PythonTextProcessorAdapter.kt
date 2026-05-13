@@ -82,13 +82,16 @@ class PythonTextProcessorAdapter(
         connection.connectTimeout = 3000
         connection.readTimeout = 5000
         connection.doOutput = true
-        connection.setRequestProperty("Content-Type", "application/json")
+        connection.setRequestProperty(
+            "Content-Type",
+            "application/json; charset=UTF-8"
+        )
 
         val safeText = text.replace("\"", "\\\"")
         val body = """{"text":"$safeText"}"""
 
         connection.outputStream.use {
-            it.write(body.toByteArray())
+            it.write(body.toByteArray(Charsets.UTF_8))
         }
 
         val status = connection.responseCode
@@ -99,7 +102,9 @@ class PythonTextProcessorAdapter(
             connection.errorStream
         }
 
-        val response = stream.bufferedReader().readText()
+        val response = stream
+            .bufferedReader(Charsets.UTF_8)
+            .readText()
 
         if (status !in 200..299) {
             throw ExternalServiceException(

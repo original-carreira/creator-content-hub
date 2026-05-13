@@ -94,11 +94,11 @@ fun Route.exportRoutes(
         val content = """
         ===== TRANSCRIPTION =====
 
-        ${transcriptionFile.readText()}
+        ${transcriptionFile.readText(Charsets.UTF_8)}
 
         ===== SUMMARY =====
 
-        ${summaryFile.readText()}
+        ${summaryFile.readText(Charsets.UTF_8)}
     """.trimIndent()
 
         val filename = "job_$jobId.txt"
@@ -150,8 +150,8 @@ fun Route.exportRoutes(
             return@get
         }
 
-        val transcriptionText = transcriptionFile.readText()
-        val summaryText = summaryFile.readText()
+        val transcriptionText = transcriptionFile.readText(Charsets.UTF_8)
+        val summaryText = summaryFile.readText(Charsets.UTF_8)
 
         // ===== gerar DOCX =====
         val doc = XWPFDocument()

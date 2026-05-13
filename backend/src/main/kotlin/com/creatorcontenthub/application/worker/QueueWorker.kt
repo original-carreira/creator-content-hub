@@ -3,6 +3,11 @@ package com.creatorcontenthub.application.worker
 import com.creatorcontenthub.application.pipeline.JobProcessor
 import com.creatorcontenthub.application.port.JobQueueRepository
 import com.creatorcontenthub.application.port.JobRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
 import java.util.UUID
@@ -15,6 +20,7 @@ class QueueWorker(
 
     private val logger = LoggerFactory.getLogger(javaClass)
     private val workerId = UUID.randomUUID().toString()
+    private val heartbeatIntervalMs = 15_000L
 
     suspend fun start() {
 
@@ -31,7 +37,7 @@ class QueueWorker(
 
                 val startedAt = System.currentTimeMillis()
 
-                logger.info(
+                logger.debug(
                     "event=queue_claim_attempt workerId={}",
                     workerId
                 )
@@ -43,7 +49,7 @@ class QueueWorker(
 
                 if (item == null) {
 
-                    logger.info(
+                    logger.debug(
                         "event=queue_claim_empty workerId={}",
                         workerId
                     )
@@ -57,7 +63,7 @@ class QueueWorker(
                         "Queue item without id"
                     )
 
-                logger.info(
+                logger.debug(
                     "event=queue_claim_success workerId={} queueId={} jobId={} attempts={}",
                     workerId,
                     queueId,
@@ -70,10 +76,53 @@ class QueueWorker(
                         "Job not found: ${item.jobId}"
                     )
 
-                val result = jobProcessor.process(
-                    jobId = item.jobId,
-                    initialState = state
-                )
+                val result = coroutineScope {
+
+                    val heartbeatJob: Job = launch {
+
+                        while (isActive) {
+
+                            delay(heartbeatIntervalMs)
+
+                            val updated = queueRepository.updateHeartbeat(
+                                queueId = queueId,
+                                workerId = workerId,
+                                heartbeatAt = System.currentTimeMillis()
+                            )
+
+                            if (!updated) {
+
+                                logger.warn(
+                                    "event=heartbeat_rejected workerId={} queueId={} jobId={}",
+                                    workerId,
+                                    queueId,
+                                    item.jobId
+                                )
+
+                                break
+                            }
+
+                            logger.info(
+                                "event=heartbeat_updated workerId={} queueId={} jobId={}",
+                                workerId,
+                                queueId,
+                                item.jobId
+                            )
+                        }
+                    }
+
+                    try {
+
+                        jobProcessor.process(
+                            jobId = item.jobId,
+                            initialState = state
+                        )
+
+                    } finally {
+
+                        heartbeatJob.cancelAndJoin()
+                    }
+                }
 
                 val completedAt = System.currentTimeMillis()
 
