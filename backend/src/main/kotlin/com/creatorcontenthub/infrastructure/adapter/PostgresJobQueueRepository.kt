@@ -19,9 +19,10 @@ class PostgresJobQueueRepository(
                 started_at,
                 completed_at,
                 attempts,
-                error_message
+                error_message,
+                retry_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()
 
         dataSource.connection.use { conn ->
@@ -36,6 +37,7 @@ class PostgresJobQueueRepository(
 
                 stmt.setInt(6, item.attempts)
                 stmt.setString(7, item.errorMessage)
+                stmt.setObject(8, item.retryAt)
 
                 stmt.executeUpdate()
             }
@@ -48,23 +50,27 @@ class PostgresJobQueueRepository(
     ): JobQueueItem? {
 
         val sql = """
-        UPDATE job_queue
-        SET
-            status = 'PROCESSING',
-            started_at = ?,
-            claimed_by = ?,
-            last_heartbeat_at = ?,
-            attempts = attempts + 1
-        WHERE id = (
-            SELECT id
-            FROM job_queue
-            WHERE status = 'PENDING'
-            ORDER BY created_at ASC
-            LIMIT 1
-            FOR UPDATE SKIP LOCKED
-        )
-        RETURNING *
-    """.trimIndent()
+            UPDATE job_queue
+            SET
+                status = 'PROCESSING',
+                started_at = ?,
+                claimed_by = ?,
+                last_heartbeat_at = ?,
+                attempts = attempts + 1
+            WHERE id = (
+                SELECT id
+                FROM job_queue
+                WHERE status = 'PENDING'
+                    AND (
+                        retry_at IS NULL
+                        OR retry_at <= ?
+                    )
+                ORDER BY created_at ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            )
+            RETURNING *
+        """.trimIndent()
 
         dataSource.connection.use { conn ->
 
@@ -77,6 +83,7 @@ class PostgresJobQueueRepository(
                     stmt.setLong(1, startedAt)
                     stmt.setString(2, workerId)
                     stmt.setLong(3, startedAt)
+                    stmt.setLong(4, startedAt)
 
                     stmt.executeQuery().use { rs ->
 
@@ -100,6 +107,8 @@ class PostgresJobQueueRepository(
                             errorMessage = rs.getString("error_message"),
                             claimedBy = rs.getString("claimed_by"),
                             lastHeartbeatAt = rs.getLong("last_heartbeat_at")
+                                .takeIf { !rs.wasNull() },
+                            retryAt = rs.getLong("retry_at")
                                 .takeIf { !rs.wasNull() }
 
                         )
@@ -125,12 +134,12 @@ class PostgresJobQueueRepository(
     ): Boolean {
 
         val sql = """
-        UPDATE job_queue
-        SET last_heartbeat_at = ?
-        WHERE id = ?
-          AND claimed_by = ?
-          AND status = 'PROCESSING'
-    """.trimIndent()
+            UPDATE job_queue
+            SET last_heartbeat_at = ?
+            WHERE id = ?
+              AND claimed_by = ?
+              AND status = 'PROCESSING'
+        """.trimIndent()
 
         dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
@@ -184,6 +193,8 @@ class PostgresJobQueueRepository(
                                 errorMessage = rs.getString("error_message"),
                                 claimedBy = rs.getString("claimed_by"),
                                 lastHeartbeatAt = rs.getLong("last_heartbeat_at")
+                                    .takeIf { !rs.wasNull() },
+                                retryAt = rs.getLong("retry_at")
                                     .takeIf { !rs.wasNull() }
                             )
                         )
@@ -200,15 +211,16 @@ class PostgresJobQueueRepository(
     ): Boolean {
 
         val sql = """
-        UPDATE job_queue
-        SET
-            status = 'PENDING',
-            claimed_by = NULL,
-            last_heartbeat_at = NULL,
-            started_at = NULL
-        WHERE id = ?
-          AND status = 'PROCESSING'
-    """.trimIndent()
+            UPDATE job_queue
+            SET
+                status = 'PENDING',
+                claimed_by = NULL,
+                last_heartbeat_at = NULL,
+                started_at = NULL,
+                retry_at = NULL
+            WHERE id = ?
+            AND status = 'PROCESSING'
+        """.trimIndent()
 
         dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
@@ -227,15 +239,15 @@ class PostgresJobQueueRepository(
     ): Boolean {
 
         val sql = """
-        UPDATE job_queue
-        SET
-            status = 'FAILED',
-            completed_at = ?,
-            error_message = ?,
-            claimed_by = NULL,
-            last_heartbeat_at = NULL
-        WHERE id = ?
-    """.trimIndent()
+            UPDATE job_queue
+            SET
+                status = 'FAILED',
+                completed_at = ?,
+                error_message = ?,
+                claimed_by = NULL,
+                last_heartbeat_at = NULL
+            WHERE id = ?
+        """.trimIndent()
 
         dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
@@ -249,17 +261,76 @@ class PostgresJobQueueRepository(
         }
     }
 
+    override fun scheduleRetry(
+        queueId: Long,
+        retryAt: Long,
+        errorMessage: String?
+    ) {
+
+        val sql = """
+            UPDATE job_queue
+            SET
+                status = 'PENDING',
+                retry_at = ?,
+                error_message = ?,
+                claimed_by = NULL,
+                last_heartbeat_at = NULL,
+                started_at = NULL
+            WHERE id = ?
+        """.trimIndent()
+
+        dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
+
+                stmt.setLong(1, retryAt)
+                stmt.setString(2, errorMessage)
+                stmt.setLong(3, queueId)
+
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    override fun markAsDeadLetter(
+        queueId: Long,
+        completedAt: Long,
+        errorMessage: String?
+    ) {
+
+        val sql = """
+            UPDATE job_queue
+            SET
+                status = 'FAILED',
+                completed_at = ?,
+                error_message = ?,
+                claimed_by = NULL,
+                last_heartbeat_at = NULL
+            WHERE id = ?
+        """.trimIndent()
+
+        dataSource.connection.use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
+
+                stmt.setLong(1, completedAt)
+                stmt.setString(2, errorMessage)
+                stmt.setLong(3, queueId)
+
+                stmt.executeUpdate()
+            }
+        }
+    }
+
     override fun markCompleted(
         queueId: Long,
         completedAt: Long
     ) {
 
         val sql = """
-        UPDATE job_queue
-        SET status = 'COMPLETED',
-            completed_at = ?
-        WHERE id = ?
-    """.trimIndent()
+            UPDATE job_queue
+            SET status = 'COMPLETED',
+                completed_at = ?
+            WHERE id = ?
+        """.trimIndent()
 
         dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
@@ -279,12 +350,12 @@ class PostgresJobQueueRepository(
     ) {
 
         val sql = """
-        UPDATE job_queue
-        SET status = 'FAILED',
-            completed_at = ?,
-            error_message = ?
-        WHERE id = ?
-    """.trimIndent()
+            UPDATE job_queue
+            SET status = 'FAILED',
+                completed_at = ?,
+                error_message = ?
+            WHERE id = ?
+        """.trimIndent()
 
         dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->

@@ -31,6 +31,18 @@ interface JobQueueRepository {
         errorMessage: String?
     ): Boolean
 
+    fun scheduleRetry(
+        queueId: Long,
+        retryAt: Long,
+        errorMessage: String?
+    )
+
+    fun markAsDeadLetter(
+        queueId: Long,
+        completedAt: Long,
+        errorMessage: String?
+    )
+
     fun markCompleted(queueId: Long, completedAt: Long)
 
     fun markFailed(
