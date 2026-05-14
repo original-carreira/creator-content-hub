@@ -27,6 +27,8 @@ import com.creatorcontenthub.application.usecase.ResumeJobUseCase
 import com.creatorcontenthub.application.usecase.SearchJobsUseCase
 import com.creatorcontenthub.application.worker.QueueWorker
 import com.creatorcontenthub.application.worker.OrphanRecoveryWorker
+import com.creatorcontenthub.application.worker.RetryPolicy
+import com.creatorcontenthub.application.worker.RetryDecisionResolver
 import com.creatorcontenthub.controller.healthDbRoute
 import com.creatorcontenthub.controller.jobMutationRoutes
 import com.creatorcontenthub.controller.jobRoutes
@@ -36,6 +38,7 @@ import com.creatorcontenthub.infrastructure.adapter.WhisperTranscriptionAdapter
 import com.creatorcontenthub.infrastructure.adapter.FallbackSummarizationAdapter
 import com.creatorcontenthub.infrastructure.adapter.FallbackTextProcessorAdapter
 import com.creatorcontenthub.infrastructure.adapter.LocalTextProcessorAdapter
+import com.creatorcontenthub.infrastructure.adapter.PostgresDeadLetterQueueRepository
 import com.creatorcontenthub.infrastructure.adapter.PostgresJobQueryRepository
 import com.creatorcontenthub.infrastructure.adapter.PostgresJobRepository
 import com.creatorcontenthub.infrastructure.adapter.PostgresJobSearchRepository
@@ -146,6 +149,9 @@ fun Application.module() {
 
     val jobQueueRepository = PostgresJobQueueRepository(dataSource)
 
+    val deadLetterQueueRepository =
+        PostgresDeadLetterQueueRepository(dataSource)
+
     environment.monitor.subscribe(ApplicationStopping) {
         (dataSource as? HikariDataSource)?.close()
     }
@@ -249,10 +255,17 @@ fun Application.module() {
         )
     )
 
+    val retryPolicy = RetryPolicy()
+
+    val retryDecisionResolver = RetryDecisionResolver()
+
     val queueWorker = QueueWorker(
         queueRepository = jobQueueRepository,
+        deadLetterQueueRepository = deadLetterQueueRepository,
         jobRepository = jobRepository,
-        jobProcessor = jobProcessor
+        jobProcessor = jobProcessor,
+        retryPolicy = retryPolicy,
+        retryDecisionResolver = retryDecisionResolver
     )
 
     val orphanRecoveryWorker = OrphanRecoveryWorker(

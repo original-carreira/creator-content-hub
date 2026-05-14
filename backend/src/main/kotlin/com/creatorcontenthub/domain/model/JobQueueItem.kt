@@ -10,5 +10,6 @@ data class JobQueueItem(
     val attempts: Int = 0,
     val errorMessage: String? = null,
     val claimedBy: String? = null,
-    val lastHeartbeatAt: Long? = null
+    val lastHeartbeatAt: Long? = null,
+    val retryAt: Long? = null
 )

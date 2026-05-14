@@ -1,8 +1,10 @@
 package com.creatorcontenthub.application.worker
 
 import com.creatorcontenthub.application.pipeline.JobProcessor
+import com.creatorcontenthub.application.port.DeadLetterQueueRepository
 import com.creatorcontenthub.application.port.JobQueueRepository
 import com.creatorcontenthub.application.port.JobRepository
+import com.creatorcontenthub.domain.model.RetryDecision
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
@@ -14,8 +16,11 @@ import java.util.UUID
 
 class QueueWorker(
     private val queueRepository: JobQueueRepository,
+    private val deadLetterQueueRepository: DeadLetterQueueRepository,
     private val jobRepository: JobRepository,
-    private val jobProcessor: JobProcessor
+    private val jobProcessor: JobProcessor,
+    private val retryPolicy: RetryPolicy,
+    private val retryDecisionResolver: RetryDecisionResolver
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -32,6 +37,7 @@ class QueueWorker(
         while (true) {
 
             var queueId: Long? = null
+            var item: com.creatorcontenthub.domain.model.JobQueueItem? = null
 
             try {
 
@@ -42,7 +48,7 @@ class QueueWorker(
                     workerId
                 )
 
-                val item = queueRepository.claimNextPending(
+                item = queueRepository.claimNextPending(
                     workerId = workerId,
                     startedAt = startedAt
                 )
@@ -102,7 +108,7 @@ class QueueWorker(
                                 break
                             }
 
-                            logger.info(
+                            logger.debug(
                                 "event=heartbeat_updated workerId={} queueId={} jobId={}",
                                 workerId,
                                 queueId,
@@ -151,11 +157,87 @@ class QueueWorker(
 
                 queueId?.let {
 
-                    queueRepository.markFailed(
-                        queueId = it,
-                        completedAt = System.currentTimeMillis(),
-                        errorMessage = ex.message
+                    val currentItem = item ?: return@let
+
+                    val retryDecision = retryDecisionResolver.resolve(
+                        attempts = currentItem.attempts,
+                        exception = ex
                     )
+
+                    when (retryDecision) {
+
+                        RetryDecision.RETRYABLE -> {
+
+                            val delayMillis = retryPolicy.calculateDelayMillis(
+                                currentItem.attempts
+                            )
+
+                            val retryAt = System.currentTimeMillis() + delayMillis
+
+                            queueRepository.scheduleRetry(
+                                queueId = it,
+                                retryAt = retryAt,
+                                errorMessage = ex.message
+                            )
+
+                            logger.warn(
+                                "event=retry_scheduled workerId={} queueId={} jobId={} retryAt={} delayMillis={} attempts={}",
+                                workerId,
+                                it,
+                                currentItem.jobId,
+                                retryAt,
+                                delayMillis,
+                                currentItem.attempts
+                            )
+                        }
+
+                        RetryDecision.TERMINAL -> {
+
+                            queueRepository.markFailed(
+                                queueId = it,
+                                completedAt = System.currentTimeMillis(),
+                                errorMessage = ex.message
+                            )
+
+                            logger.error(
+                                "event=terminal_failure workerId={} queueId={} jobId={} attempts={}",
+                                workerId,
+                                it,
+                                currentItem.jobId,
+                                currentItem.attempts
+                            )
+                        }
+
+                        RetryDecision.DLQ -> {
+
+                            deadLetterQueueRepository.insert(
+                                com.creatorcontenthub.domain.model.DeadLetterQueueItem(
+                                    jobId = currentItem.jobId,
+                                    queueId = currentItem.id,
+                                    stage = "QUEUE_WORKER",
+                                    errorMessage = ex.stackTraceToString(),
+                                    failedAt = System.currentTimeMillis(),
+                                    attempts = currentItem.attempts,
+                                    workerId = workerId,
+                                    payloadSnapshot = null
+                                )
+                            )
+
+                            queueRepository.markAsDeadLetter(
+                                queueId = it,
+                                completedAt = System.currentTimeMillis(),
+                                errorMessage = ex.message
+                            )
+
+                            logger.error(
+                                "event=job_sent_to_dlq workerId={} queueId={} jobId={} attempts={}",
+                                workerId,
+                                it,
+                                currentItem.jobId,
+                                currentItem.attempts
+                            )
+                        }
+                    }
                 }
 
                 delay(2000)
