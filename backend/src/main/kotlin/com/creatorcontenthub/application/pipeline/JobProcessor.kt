@@ -3,11 +3,14 @@ package com.creatorcontenthub.application.pipeline
 import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.domain.model.JobStage
 import com.creatorcontenthub.domain.model.JobState
+import com.creatorcontenthub.infrastructure.runtime.RuntimeEvent
+import com.creatorcontenthub.infrastructure.runtime.RuntimeEventBus
 import org.slf4j.LoggerFactory
 
 class JobProcessor(
     private val jobRepository: JobRepository,
-    private val steps: List<PipelineStep>
+    private val steps: List<PipelineStep>,
+    private val runtimeEventBus: RuntimeEventBus
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -35,6 +38,16 @@ class JobProcessor(
             }
         )
 
+        runtimeEventBus.publish(
+            RuntimeEvent(
+                jobId = jobId,
+                event = "resume_started",
+                stage = initialState.stage.name,
+                status = initialState.status.name,
+                message = "Pipeline resumed"
+            )
+        )
+
         for (step in executableSteps) {
 
             val stageBefore = current.stage
@@ -44,6 +57,16 @@ class JobProcessor(
                 "event=stage_started jobId={} stage={}",
                 jobId,
                 stageBefore
+            )
+
+            runtimeEventBus.publish(
+                RuntimeEvent(
+                    jobId = jobId,
+                    event = "stage_started",
+                    stage = stageBefore.name,
+                    status = current.status.name,
+                    message = "Stage started"
+                )
             )
 
             try {
@@ -59,6 +82,16 @@ class JobProcessor(
                     duration
                 )
 
+                runtimeEventBus.publish(
+                    RuntimeEvent(
+                        jobId = jobId,
+                        event = "stage_changed",
+                        stage = current.stage.name,
+                        status = current.status.name,
+                        message = "Pipeline advanced to ${current.stage.name}"
+                    )
+                )
+
             } catch (ex: Exception) {
 
                 val duration = System.currentTimeMillis() - startedAt
@@ -72,6 +105,16 @@ class JobProcessor(
                     ex
                 )
 
+                runtimeEventBus.publish(
+                    RuntimeEvent(
+                        jobId = jobId,
+                        event = "job_failed",
+                        stage = stageBefore.name,
+                        status = current.status.name,
+                        message = ex.message ?: "Pipeline failed"
+                    )
+                )
+
                 throw ex
             }
         }
@@ -80,6 +123,16 @@ class JobProcessor(
             "event=resume_completed jobId={} finalStage={}",
             jobId,
             current.stage
+        )
+
+        runtimeEventBus.publish(
+            RuntimeEvent(
+                jobId = jobId,
+                event = "job_completed",
+                stage = current.stage.name,
+                status = current.status.name,
+                message = "Pipeline completed"
+            )
         )
 
         return current

@@ -13,6 +13,8 @@ import com.creatorcontenthub.infrastructure.logging.StructuredLogger
 import com.creatorcontenthub.infrastructure.resilience.RetryUtil
 import com.creatorcontenthub.application.resilience.ErrorClassifier
 import com.creatorcontenthub.domain.model.ErrorType
+import com.creatorcontenthub.infrastructure.runtime.RuntimeEvent
+import com.creatorcontenthub.infrastructure.runtime.RuntimeEventBus
 import org.slf4j.LoggerFactory
 import java.io.BufferedReader
 import java.nio.charset.StandardCharsets
@@ -25,7 +27,8 @@ class YtDlpVideoIngestionAdapter(
     private val configuredPath: String? = "C:\\tools\\yt-dlp\\yt-dlp.exe",
     private val outputDir: String,
     private val timeoutConfig: IngestionTimeoutConfig = IngestionTimeoutConfig(),
-    private val jobRepository: JobRepository
+    private val jobRepository: JobRepository,
+    private val runtimeEventBus: RuntimeEventBus
 ) : VideoIngestionPort {
 
     companion object {
@@ -89,6 +92,8 @@ class YtDlpVideoIngestionAdapter(
 
                 logger.info("event=download_start jobId={} command={}", jobId, ytDlpCommand)
 
+                var lastProgress = -1.0
+
                 readerThread = Thread {
                     try {
                         BufferedReader(
@@ -102,6 +107,33 @@ class YtDlpVideoIngestionAdapter(
 
                             while (reader.readLine().also { line = it } != null) {
                                 val currentLine = line ?: break
+
+                                val progressMatch = Regex("""(\d{1,3}\.\d+)%""")
+                                    .find(currentLine)
+
+                                val progress = progressMatch
+                                    ?.groupValues
+                                    ?.getOrNull(1)
+                                    ?.toDoubleOrNull()
+
+                                if (progress != null) {
+
+                                    if (progress - lastProgress >= 5.0) {
+
+                                        lastProgress = progress
+
+                                        runtimeEventBus.publish(
+                                            RuntimeEvent(
+                                                jobId = jobId,
+                                                event = "download_progress",
+                                                stage = "DOWNLOADING",
+                                                status = "PROCESSING",
+                                                progress = progress,
+                                                message = "Download progress"
+                                            )
+                                        )
+                                    }
+                                }
 
                                 logger.info(
                                     "event=yt_dlp_output jobId={} line={}",

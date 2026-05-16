@@ -30,6 +30,7 @@ import com.creatorcontenthub.application.worker.OrphanRecoveryWorker
 import com.creatorcontenthub.application.worker.RetryPolicy
 import com.creatorcontenthub.application.worker.RetryDecisionResolver
 import com.creatorcontenthub.controller.healthDbRoute
+import com.creatorcontenthub.controller.jobEventsRoutes
 import com.creatorcontenthub.controller.jobMutationRoutes
 import com.creatorcontenthub.controller.jobRoutes
 import com.creatorcontenthub.controller.searchRoutes
@@ -55,6 +56,7 @@ import com.creatorcontenthub.infrastructure.metrics.PrometheusRegistry
 import com.creatorcontenthub.infrastructure.metrics.SearchMetrics
 import com.creatorcontenthub.infrastructure.storage.FileStorageService
 import com.creatorcontenthub.infrastructure.adapter.PostgresJobQueueRepository
+import com.creatorcontenthub.infrastructure.runtime.RuntimeEventBus
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -201,11 +203,14 @@ fun Application.module() {
 
     val fileStorageService = FileStorageService("$outputDir/jobs")
 
+    val runtimeEventBus = RuntimeEventBus()
+
     val videoIngestionAdapter = YtDlpVideoIngestionAdapter(
         configuredPath = ytDlpPath,
         outputDir = outputDir,
         timeoutConfig = IngestionTimeoutConfig(),
-        jobRepository = jobRepository
+        jobRepository = jobRepository,
+        runtimeEventBus = runtimeEventBus
     )
 
     val cleanupService = FileCleanupService(outputDir)
@@ -252,7 +257,8 @@ fun Application.module() {
             transcriptionStep,
             summaryStep,
             finalizeJobStep
-        )
+        ),
+        runtimeEventBus = runtimeEventBus
     )
 
     val retryPolicy = RetryPolicy()
@@ -265,7 +271,8 @@ fun Application.module() {
         jobRepository = jobRepository,
         jobProcessor = jobProcessor,
         retryPolicy = retryPolicy,
-        retryDecisionResolver = retryDecisionResolver
+        retryDecisionResolver = retryDecisionResolver,
+        runtimeEventBus = runtimeEventBus
     )
 
     val orphanRecoveryWorker = OrphanRecoveryWorker(
@@ -341,7 +348,8 @@ fun Application.module() {
         cancelJobUseCase,
         resumeJobUseCase,
         deleteJobUseCase,
-        deleteJobsUseCase
+        deleteJobsUseCase,
+        runtimeEventBus
     )
 }
 
@@ -407,6 +415,7 @@ fun Application.configureRouting(
     resumeJobUseCase: ResumeJobUseCase,
     deleteJobUseCase: DeleteJobUseCase,
     deleteJobsUseCase: DeleteJobsUseCase,
+    runtimeEventBus: RuntimeEventBus
 
 ) {
     routing {
@@ -417,6 +426,7 @@ fun Application.configureRouting(
         searchRoutes(searchJobsUseCase)
         jobRoutes(jobRepository)
         jobMutationRoutes(deleteJobUseCase, deleteJobsUseCase)
+        jobEventsRoutes(runtimeEventBus)
 
         ingestRoutes(
             ingestYoutubeUseCase,
