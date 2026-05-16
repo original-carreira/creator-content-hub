@@ -7,6 +7,258 @@ let debounceTimer = null;
 let lastQuery = "";
 let currentMode = "idle"; // "search" | "jobs"
 
+// ========================================
+// SSE RUNTIME MANAGER
+// ========================================
+
+const runtimeConnections = new Map();
+
+const runtimeReconnectTimers = new Map();
+
+const runtimeListeners = new Map();
+
+const MAX_RUNTIME_RECONNECT_ATTEMPTS = 10;
+
+const BASE_RECONNECT_DELAY = 2000;
+
+// ========================================
+// SSE CONNECTION MANAGEMENT
+// ========================================
+
+function cleanupRuntimeConnection(jobId) {
+
+    const existingConnection = runtimeConnections.get(jobId);
+
+    if (existingConnection) {
+        existingConnection.close();
+        runtimeConnections.delete(jobId);
+    }
+
+    const reconnectTimer = runtimeReconnectTimers.get(jobId);
+
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        runtimeReconnectTimers.delete(jobId);
+    }
+
+    runtimeListeners.delete(jobId);
+}
+
+function connectJobRuntimeStream(jobId, handlers = {}) {
+
+    if (!jobId) {
+        return;
+    }
+
+    // evita múltiplas conexões do mesmo job
+    cleanupRuntimeConnection(jobId);
+
+    const reconnectState = {
+        attempts: 0,
+        closedManually: false
+    };
+
+    runtimeListeners.set(jobId, handlers);
+
+    function connect() {
+
+        if (reconnectState.closedManually) {
+            return;
+        }
+
+        const eventSource =
+            new EventSource(`/jobs/${jobId}/events`);
+
+        runtimeConnections.set(jobId, eventSource);
+
+        eventSource.onopen = () => {
+
+            reconnectState.attempts = 0;
+
+            console.log(
+                "[SSE] connected:",
+                jobId
+            );
+        };
+
+        eventSource.onerror = () => {
+
+            console.warn(
+                "[SSE] disconnected:",
+                jobId
+            );
+
+            eventSource.close();
+
+            runtimeConnections.delete(jobId);
+
+            if (reconnectState.closedManually) {
+                return;
+            }
+
+            reconnectState.attempts++;
+
+            if (
+                reconnectState.attempts >
+                MAX_RUNTIME_RECONNECT_ATTEMPTS
+            ) {
+
+                console.error(
+                    "[SSE] reconnect limit reached:",
+                    jobId
+                );
+
+                return;
+            }
+
+            const delay =
+                BASE_RECONNECT_DELAY *
+                reconnectState.attempts;
+
+            const timer = setTimeout(() => {
+                connect();
+            }, delay);
+
+            runtimeReconnectTimers.set(
+                jobId,
+                timer
+            );
+        };
+
+        [
+            "stage_changed",
+            "stage_started",
+            "download_progress",
+            "retry_scheduled",
+            "heartbeat_timeout",
+            "orphan_recovered",
+            "dlq_transition",
+            "job_completed",
+            "job_failed",
+            "stream_completed"
+        ].forEach(eventName => {
+
+            eventSource.addEventListener(
+                eventName,
+                (event) => {
+
+                    console.log(
+                        "[SSE RAW EVENT]",
+                        {
+                            eventName,
+                            rawData: event.data
+                        }
+                    );
+
+                    try {
+
+                        console.log(
+                            "[SSE RAW EVENT]",
+                            {
+                                eventName,
+                                rawData: event.data
+                            }
+                        );
+
+                        // payload inexistente
+                        if (
+                            typeof event.data !== "string"
+                        ) {
+
+                            console.log(
+                                "[SSE IGNORE] non-string payload"
+                            );
+
+                            return;
+                        }
+
+                        const raw =
+                            event.data.trim();
+
+                        // payload vazio
+                        if (
+                            raw.length === 0
+                        ) {
+
+                            console.log(
+                                "[SSE IGNORE] empty payload"
+                            );
+
+                            return;
+                        }
+
+                        // stream_completed pode chegar vazio
+                        if (
+                            eventName === "stream_completed"
+                        ) {
+
+                            console.log(
+                                "[SSE STREAM COMPLETED]"
+                            );
+
+                            cleanupRuntimeConnection(jobId);
+
+                            return;
+                        }
+
+                        // sanity check
+                        if (
+                            !raw.startsWith("{")
+                        ) {
+
+                            console.warn(
+                                "[SSE IGNORE] invalid json payload",
+                                raw
+                            );
+
+                            return;
+                        }
+
+                        const payload =
+                            JSON.parse(raw);
+
+                        console.log(
+                            "[SSE PARSED]",
+                            payload
+                        );
+
+                        const listener =
+                            runtimeListeners.get(jobId);
+
+                        if (
+                            listener &&
+                            typeof listener.onEvent === "function"
+                        ) {
+
+                            listener.onEvent(
+                                eventName,
+                                payload
+                            );
+                        }
+
+                    } catch (err) {
+
+                        console.error(
+                            "[SSE] invalid payload:",
+                            err,
+                            event.data
+                        );
+                    }
+                }
+            );
+        });
+    }
+
+    connect();
+
+    return {
+        close() {
+            reconnectState.closedManually = true;
+            cleanupRuntimeConnection(jobId);
+        }
+    };
+}
+
 function onSearchInput(value) {
     clearTimeout(debounceTimer);
 
@@ -377,6 +629,78 @@ function renderDetails(job) {
             <strong>Resumo:</strong>
             <pre id="job-summary"></pre>
         </div>
+        
+        <div class="detail-block">
+            <strong>Stage Atual:</strong>
+
+            <div
+                id="runtime-stage"
+                style="
+                    margin-top:8px;
+                    padding:10px;
+                    border-radius:8px;
+                    background:#f5f5f5;
+                    font-weight:bold;
+                "
+            >
+                aguardando runtime...
+            </div>
+        </div>
+
+        <div class="detail-block">
+
+            <strong>Download Progress:</strong>
+
+            <div
+                style="
+                    width:100%;
+                    height:18px;
+                    background:#e0e0e0;
+                    border-radius:999px;
+                    overflow:hidden;
+                    margin-top:8px;
+                "
+            >
+                <div
+                    id="runtime-progress-bar"
+                    style="
+                        width:0%;
+                        height:100%;
+                        background:#1976d2;
+                        transition:width 180ms linear;
+                    "
+                ></div>
+            </div>
+
+            <div
+                id="runtime-progress-label"
+                style="
+                    margin-top:6px;
+                    font-size:12px;
+                    color:#666;
+                "
+            >
+                0%
+            </div>
+        </div>
+
+        <div class="detail-block">
+
+            <strong>Timeline Runtime:</strong>
+
+            <div
+                id="runtime-timeline"
+                style="
+                    margin-top:10px;
+                    display:flex;
+                    flex-direction:column;
+                    gap:8px;
+                    max-height:240px;
+                    overflow-y:auto;
+                    padding-right:6px;
+                "
+            ></div>
+        </div>
     `;
 
     // 👇 conteúdo seguro (SEM warning)
@@ -428,7 +752,160 @@ async function ingest() {
         statusEl.innerText = `Job criado: ${jobId}`;
         urlInput.value = "";
 
-        pollStatus(jobId);
+        // ========================================
+        // START REALTIME SSE
+        // ========================================
+
+        connectJobRuntimeStream(jobId, {
+
+            onEvent(eventName, payload) {
+
+                console.log(
+                    "[RUNTIME EVENT]",
+                    eventName,
+                    payload
+                );
+
+                // garante render realtime do painel ativo
+                if (
+                    !document.getElementById("runtime-stage")
+                ) {
+
+                    renderDetails({
+                        id: payload.jobId,
+                        status: payload.status,
+                        stage: payload.stage,
+                        transcription: "",
+                        summary: "",
+                        createdAt: Date.now()
+                    });
+                }
+
+                // ========================================
+                // DETAILS RUNTIME UI
+                // ========================================
+
+                const runtimeStage =
+                    document.getElementById("runtime-stage");
+
+                if (runtimeStage) {
+
+                    runtimeStage.innerText =
+                        `${payload.stage || "-"}`;
+                }
+
+                const progressBar =
+                    document.getElementById(
+                        "runtime-progress-bar"
+                    );
+
+                const progressLabel =
+                    document.getElementById(
+                        "runtime-progress-label"
+                    );
+
+                if (
+                    progressBar &&
+                    progressLabel &&
+                    typeof payload.progress === "number"
+                ) {
+
+                    const progress =
+                        Math.max(
+                            0,
+                            Math.min(100, payload.progress)
+                        );
+
+                    progressBar.style.width =
+                        `${progress}%`;
+
+                    progressLabel.innerText =
+                        `${progress.toFixed(1)}%`;
+                }
+
+                // ========================================
+                // TIMELINE
+                // ========================================
+
+                const timeline =
+                    document.getElementById(
+                        "runtime-timeline"
+                    );
+
+                if (timeline) {
+
+                    const item =
+                        document.createElement("div");
+
+                    item.style.padding = "8px";
+                    item.style.borderRadius = "8px";
+                    item.style.background = "#f5f5f5";
+                    item.style.fontSize = "12px";
+                    item.style.borderLeft =
+                        "4px solid #1976d2";
+
+                    const time =
+                        new Date(
+                            payload.timestamp || Date.now()
+                        ).toLocaleTimeString();
+
+                    item.innerHTML = `
+                        <div style="font-weight:bold;">
+                            ${eventName}
+                        </div>
+
+                        <div style="margin-top:4px;">
+                            ${payload.message || "-"}
+                        </div>
+
+                        <div style="
+                            margin-top:4px;
+                            color:#666;
+                            font-size:11px;
+                        ">
+                            ${time}
+                        </div>
+                    `;
+
+                    timeline.prepend(item);
+
+                    // mantém timeline controlada
+                    while (timeline.children.length > 40) {
+                        timeline.removeChild(
+                            timeline.lastChild
+                        );
+                    }
+                }
+
+                // ========================================
+                // SSE-FIRST RUNTIME UI
+                // ========================================
+
+                // evita conflito com polling legacy
+                if (
+                    payload.event === "job_completed" ||
+                    payload.event === "job_failed"
+                ) {
+
+                    updateIngestUI({
+                        status:
+                            payload.event === "job_completed"
+                                ? "DONE"
+                                : "FAILED",
+
+                        summary: "",
+
+                        transcription: ""
+                    });
+                }
+            }
+        });
+
+        // SSE-FIRST MODE
+        // polling legacy desativado temporariamente
+        console.log(
+            "[INGEST] SSE realtime mode ativo"
+        );
 
     } catch (err) {
         console.error("Erro no ingest:", err);
@@ -563,7 +1040,33 @@ function updateIngestUI(job, elapsedSec = null) {
     if (job.status === "DONE") {
         statusEl.innerText = "✔ Processamento concluído";
 
-        renderDetails(job);
+        const runtimePanelActive =
+            document.getElementById("runtime-stage");
+
+        if (!runtimePanelActive) {
+
+            renderDetails(job);
+
+        } else {
+
+            // atualiza apenas resumo final
+            const summaryEl =
+                document.getElementById("job-summary");
+
+            if (summaryEl) {
+
+                summaryEl.innerText =
+                    job.summary || "(vazio)";
+            }
+
+            const runtimeStage =
+                document.getElementById("runtime-stage");
+
+            if (runtimeStage) {
+
+                runtimeStage.innerText = "COMPLETED";
+            }
+        }
 
         let query = "";
 
@@ -637,7 +1140,20 @@ async function loadJobs() {
         }
 
         statusEl.innerText = "";
-        renderResults(data.data.items);
+
+        const runtimePanelActive =
+            document.getElementById("runtime-stage");
+
+        if (!runtimePanelActive) {
+
+            renderResults(data.data.items);
+
+        } else {
+
+            console.log(
+                "[LOAD JOBS] runtime panel ativo -> skip renderResults"
+            );
+        }
 
         // 🔁 auto refresh inteligente (controlado)
         const hasProcessing = data.data.items.some(i => i.status === "PROCESSING");
