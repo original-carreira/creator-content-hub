@@ -5,6 +5,8 @@ import com.creatorcontenthub.application.port.DeadLetterQueueRepository
 import com.creatorcontenthub.application.port.JobQueueRepository
 import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.domain.model.RetryDecision
+import com.creatorcontenthub.infrastructure.runtime.RuntimeEvent
+import com.creatorcontenthub.infrastructure.runtime.RuntimeEventBus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
@@ -20,7 +22,8 @@ class QueueWorker(
     private val jobRepository: JobRepository,
     private val jobProcessor: JobProcessor,
     private val retryPolicy: RetryPolicy,
-    private val retryDecisionResolver: RetryDecisionResolver
+    private val retryDecisionResolver: RetryDecisionResolver,
+    private val runtimeEventBus: RuntimeEventBus
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -103,6 +106,14 @@ class QueueWorker(
                                     workerId,
                                     queueId,
                                     item.jobId
+                                )
+
+                                runtimeEventBus.publish(
+                                    RuntimeEvent(
+                                        jobId = item.jobId,
+                                        event = "heartbeat_timeout",
+                                        message = "Worker heartbeat rejected"
+                                    )
                                 )
 
                                 break
@@ -189,6 +200,14 @@ class QueueWorker(
                                 delayMillis,
                                 currentItem.attempts
                             )
+
+                            runtimeEventBus.publish(
+                                RuntimeEvent(
+                                    jobId = currentItem.jobId,
+                                    event = "retry_scheduled",
+                                    message = "Retry scheduled"
+                                )
+                            )
                         }
 
                         RetryDecision.TERMINAL -> {
@@ -205,6 +224,14 @@ class QueueWorker(
                                 it,
                                 currentItem.jobId,
                                 currentItem.attempts
+                            )
+
+                            runtimeEventBus.publish(
+                                RuntimeEvent(
+                                    jobId = currentItem.jobId,
+                                    event = "job_failed",
+                                    message = "Terminal job failure"
+                                )
                             )
                         }
 
@@ -235,6 +262,14 @@ class QueueWorker(
                                 it,
                                 currentItem.jobId,
                                 currentItem.attempts
+                            )
+
+                            runtimeEventBus.publish(
+                                RuntimeEvent(
+                                    jobId = currentItem.jobId,
+                                    event = "dlq_transition",
+                                    message = "Job moved to dead letter queue"
+                                )
                             )
                         }
                     }
