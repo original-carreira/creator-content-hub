@@ -5,6 +5,8 @@ import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -34,59 +36,153 @@ fun Route.jobEventsRoutes(
 
         val events = runtimeEventBus.subscribe(jobId)
 
+        application.log.info(
+            "event=sse_client_connected jobId={}",
+            jobId
+        )
+
+        val json = Json {
+            encodeDefaults = true
+            explicitNulls = true
+        }
+
         call.respondTextWriter(
             contentType = ContentType.Text.EventStream
         ) {
 
-            coroutineScope {
+            suspend fun safeSseWrite(
+                block: suspend () -> Unit
+            ): Boolean {
 
-                launch {
+                return try {
 
-                    while (isActive) {
+                    block()
 
-                        write(": ping\n\n")
-                        flush()
+                    true
 
-                        delay(15_000)
-                    }
+                } catch (ex: Throwable) {
+
+                    application.log.warn(
+                        "event=sse_write_failed jobId={} message={}",
+                        jobId,
+                        ex.message
+                    )
+
+                    false
                 }
+            }
+
+            val keepAliveInterval = 15_000L
+
+            var lastKeepAlive = System.currentTimeMillis()
+
+            var streamClosed = false
+
+            try {
 
                 events.collect { event ->
 
-                    write("event: ${event.event}\n")
+                    if (streamClosed) {
+                        return@collect
+                    }
 
-                    write(
-                        "data: " +
-                                """
-                {
-                  "jobId":"${event.jobId}",
-                  "event":"${event.event}",
-                  "status":"${event.status}",
-                  "stage":"${event.stage}",
-                  "message":"${event.message}",
-                  "progress":${event.progress},
-                  "timestamp":${event.timestamp}
-                }
-                """.trimIndent()
-                    )
+                    val now = System.currentTimeMillis()
 
-                    write("\n\n")
+                    // ========================================
+                    // KEEPALIVE
+                    // ========================================
 
-                    flush()
+                    if (
+                        now - lastKeepAlive >= keepAliveInterval
+                    ) {
+
+                        val keepAliveOk = safeSseWrite {
+
+                            write(": ping\n\n")
+                            flush()
+                        }
+
+                        if (!keepAliveOk) {
+
+                            streamClosed = true
+
+                            return@collect
+                        }
+
+                        application.log.debug(
+                            "event=sse_keepalive_sent jobId={}",
+                            jobId
+                        )
+
+                        lastKeepAlive = now
+                    }
+
+                    // ========================================
+                    // EVENT WRITE
+                    // ========================================
+
+                    val writeOk = safeSseWrite {
+
+                        write("event: ${event.event}\n")
+
+                        val payload =
+                            json.encodeToString(event)
+
+                        write("data: $payload\n")
+
+                        write("\n\n")
+
+                        flush()
+                    }
+
+                    if (!writeOk) {
+
+                        streamClosed = true
+
+                        return@collect
+                    }
+
+                    // ========================================
+                    // TERMINAL EVENTS
+                    // ========================================
 
                     if (
                         event.event == "job_completed" ||
                         event.event == "job_failed"
                     ) {
 
-                        write("event: stream_completed\n")
-                        write("data: {}\n\n")
+                        safeSseWrite {
 
-                        flush()
+                            write("event: stream_completed\n")
+                            write("data: {}\n\n")
+                            flush()
+                        }
+
+                        application.log.info(
+                            "event=sse_stream_closed jobId={} reason=terminal_event",
+                            jobId
+                        )
+
+                        streamClosed = true
 
                         return@collect
                     }
                 }
+
+            } catch (ex: Throwable) {
+
+                application.log.warn(
+                    "event=sse_client_disconnected jobId={} message={}",
+                    jobId,
+                    ex.message
+                )
+
+            } finally {
+
+                application.log.info(
+                    "event=sse_stream_closed jobId={} reason=finally",
+                    jobId
+                )
             }
         }
     }

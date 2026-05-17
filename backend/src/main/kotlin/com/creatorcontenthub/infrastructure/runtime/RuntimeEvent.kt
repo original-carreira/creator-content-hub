@@ -1,5 +1,6 @@
 package com.creatorcontenthub.infrastructure.runtime
 
+@kotlinx.serialization.Serializable
 data class RuntimeEvent(
     val jobId: String,
     val event: String,
