@@ -4,6 +4,7 @@ import com.creatorcontenthub.application.pipeline.JobProcessor
 import com.creatorcontenthub.application.port.DeadLetterQueueRepository
 import com.creatorcontenthub.application.port.JobQueueRepository
 import com.creatorcontenthub.application.port.JobRepository
+import com.creatorcontenthub.domain.exception.JobCanceledException
 import com.creatorcontenthub.domain.model.RetryDecision
 import com.creatorcontenthub.infrastructure.runtime.RuntimeEvent
 import com.creatorcontenthub.infrastructure.runtime.RuntimeEventBus
@@ -156,6 +157,25 @@ class QueueWorker(
                     result.stage
                 )
 
+
+            } catch (ex: JobCanceledException) {
+
+                logger.info(
+                    "event=worker_job_canceled workerId={} queueId={} jobId={}",
+                    workerId,
+                    item?.id,
+                    item?.jobId
+                )
+
+                if (item != null) {
+
+                    queueRepository.markCompleted(
+                        item.id!!,
+                        System.currentTimeMillis()
+                    )
+                }
+
+                continue
             } catch (ex: Exception) {
 
                 logger.error(
