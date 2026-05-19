@@ -1,5 +1,7 @@
 
 let activeJobId = null;
+let activeDetailsJobId = null;
+let activeRuntimeStream = null;
 let jobsRefreshTimeout = null;
 let pollingActive = true;
 let ingestInterval = null;
@@ -20,6 +22,17 @@ const runtimeListeners = new Map();
 const runtimeReconnectStates = new Map();
 
 const runtimeStateStore = new Map();
+
+const runtimeStreamsByJob =
+    new Map();
+
+const runtimeFallbackIntervals = new Map();
+
+const TERMINAL_STATUSES = new Set([
+    "DONE",
+    "FAILED",
+    "CANCELED"
+]);
 
 const MAX_RUNTIME_RECONNECT_ATTEMPTS = 10;
 
@@ -49,6 +62,160 @@ function cleanupRuntimeConnection(jobId) {
 
     runtimeListeners.delete(jobId);
     runtimeReconnectStates.delete(jobId);
+}
+
+function cleanupRuntimeSession(jobId) {
+
+    console.log(
+        "[RUNTIME CLEANUP] start",
+        jobId
+    );
+
+    // SSE CONNECTION
+    const connection =
+        runtimeConnections.get(jobId);
+
+    if (connection) {
+
+        connection.onopen = null;
+        connection.onerror = null;
+
+        connection.close();
+
+        runtimeConnections.delete(jobId);
+    }
+
+    // RECONNECT TIMER
+    const reconnectTimer =
+        runtimeReconnectTimers.get(jobId);
+
+    if (reconnectTimer) {
+
+        clearTimeout(reconnectTimer);
+
+        runtimeReconnectTimers.delete(jobId);
+    }
+
+    // FALLBACK INTERVAL
+    const fallbackInterval =
+        runtimeFallbackIntervals.get(jobId);
+
+    if (fallbackInterval) {
+
+        clearInterval(fallbackInterval);
+
+        runtimeFallbackIntervals.delete(jobId);
+    }
+
+    // LISTENERS
+    runtimeListeners.delete(jobId);
+
+    // STREAM REGISTRY
+    runtimeStreamsByJob.delete(jobId);
+
+    // RECONNECT STATE
+    const reconnectState =
+        runtimeReconnectStates.get(jobId);
+
+    if (reconnectState) {
+
+        reconnectState.terminallyClosed = true;
+        reconnectState.closedManually = true;
+    }
+    runtimeReconnectStates.delete(jobId);
+
+    // ACTIVE STREAM
+    if (
+        activeRuntimeStream &&
+        activeJobId === jobId
+    ) {
+
+        activeRuntimeStream = null;
+    }
+
+    // ACTIVE JOB
+    if (activeJobId === jobId) {
+
+        activeJobId = null;
+    }
+
+    // LOCAL STORAGE
+    const savedJobId =
+        localStorage.getItem(
+            "activeRuntimeJobId"
+        );
+
+    if (savedJobId === jobId) {
+
+        localStorage.removeItem(
+            "activeRuntimeJobId"
+        );
+    }
+
+    console.log(
+        "[RUNTIME CLEANUP] completed",
+        jobId
+    );
+}
+
+function switchActiveRuntimeStream(jobId, handlers = {}) {
+
+    const existingStream =
+        runtimeStreamsByJob.get(jobId);
+
+    if (existingStream) {
+
+        console.log(
+            "[SSE] existing stream reused",
+            jobId
+        );
+
+        activeRuntimeStream =
+            existingStream;
+
+        activeJobId = jobId;
+
+        rerenderRuntimePanel(jobId);
+
+        return;
+    }
+
+    // encerra stream global anterior
+    if (activeRuntimeStream) {
+
+        console.log(
+            "[RUNTIME STREAM] closing previous active stream"
+        );
+
+        activeRuntimeStream.close();
+
+        activeRuntimeStream = null;
+    }
+
+    // cria nova stream exclusiva
+    activeRuntimeStream =
+        connectJobRuntimeStream(
+            jobId,
+            handlers
+        );
+
+    runtimeStreamsByJob.set(
+        jobId,
+        activeRuntimeStream
+    );
+
+    return activeRuntimeStream;
+}
+
+function isTerminalRuntime(runtimeState) {
+
+    if (!runtimeState) {
+        return false;
+    }
+
+    return TERMINAL_STATUSES.has(
+        runtimeState.status
+    );
 }
 
 function clearRuntimeTimeline() {
@@ -162,6 +329,227 @@ function updateDownloadProgress(
         `${normalized.toFixed(1)}%`;
 }
 
+// ========================================
+// STATE-DRIVEN RENDERERS
+// ========================================
+
+function rerenderRuntimeStage(runtimeState) {
+
+    if (!runtimeState) {
+        return;
+    }
+
+    const runtimeStage =
+        document.getElementById(
+            "runtime-stage"
+        );
+
+    if (!runtimeStage) {
+        return;
+    }
+
+    const nextStage =
+        getRuntimeStageLabel(
+            runtimeState.stage,
+            runtimeState.status
+        );
+
+    // evita repaint desnecessário
+    if (
+        runtimeStage.innerText !==
+        nextStage
+    ) {
+
+        runtimeStage.innerText =
+            nextStage;
+
+        console.log(
+            "[RUNTIME UI] stage rerender",
+            {
+                stage: nextStage
+            }
+        );
+    }
+}
+
+function rerenderRuntimeProgress(runtimeState) {
+
+    if (
+        !runtimeState ||
+        typeof runtimeState.progress !==
+        "number"
+    ) {
+        return;
+    }
+
+    updateDownloadProgress(
+        runtimeState.progress
+    );
+
+    console.log(
+        "[RUNTIME UI] progress rerender",
+        {
+            progress:
+            runtimeState.progress
+        }
+    );
+}
+
+function rerenderRuntimeTimeline(runtimeState) {
+
+    if (
+        !runtimeState ||
+        !Array.isArray(
+            runtimeState.timeline
+        )
+    ) {
+        return;
+    }
+
+    const timeline =
+        document.getElementById(
+            "runtime-timeline"
+        );
+
+    if (!timeline) {
+        return;
+    }
+
+    // evita rebuild redundante
+    const expectedCount =
+        runtimeState.timeline.length;
+
+    if (
+        timeline.children.length ===
+        expectedCount
+    ) {
+        return;
+    }
+
+    timeline.innerHTML = "";
+
+    runtimeState.timeline
+        .slice()
+        .reverse()
+        .forEach(item => {
+
+            appendRuntimeEvent(
+                item.event,
+                item.payload
+            );
+        });
+
+    console.log(
+        "[RUNTIME UI] timeline rerender",
+        {
+            items: expectedCount
+        }
+    );
+}
+
+function rerenderRuntimePanel(jobId) {
+
+    if (!jobId) {
+        return;
+    }
+
+    // ownership hardening
+    if (jobId !== activeJobId) {
+
+        console.log(
+            "[RUNTIME UI] rerender skipped inactive job",
+            {
+                jobId,
+                activeJobId
+            }
+        );
+
+        return;
+    }
+
+    const runtimeState =
+        runtimeStateStore.get(jobId);
+
+    if (!runtimeState) {
+
+        console.log(
+            "[RUNTIME UI] missing runtime state",
+            {
+                jobId
+            }
+        );
+
+        return;
+    }
+
+    if (isTerminalRuntime(runtimeState)) {
+
+        console.log(
+            "[TERMINAL RUNTIME]",
+            runtimeState.jobId,
+            runtimeState.status
+        );
+
+        // preserva último stage terminal
+        const runtimeStage =
+            document.getElementById(
+                "runtime-stage"
+            );
+
+        if (
+            runtimeState.stage &&
+            runtimeStage
+        ) {
+
+            runtimeStage.innerText =
+                runtimeState.stage;
+        }
+
+        // preserva progress final
+        if (
+            typeof runtimeState.progress ===
+            "number"
+        ) {
+
+            updateDownloadProgress(
+                runtimeState.progress
+            );
+        }
+
+        // renderiza timeline persistida
+        rerenderRuntimeTimeline(
+            runtimeState
+        );
+
+        return;
+    }
+
+    rerenderRuntimeStage(
+        runtimeState
+    );
+
+    rerenderRuntimeProgress(
+        runtimeState
+    );
+
+    rerenderRuntimeTimeline(
+        runtimeState
+    );
+
+    console.log(
+        "[RUNTIME UI] targeted rerender",
+        {
+            jobId,
+            timeline:
+                runtimeState.timeline?.length || 0,
+            progress:
+            runtimeState.progress,
+            stage:
+            runtimeState.stage
+        }
+    );
+}
+
 function restoreRuntimeState(
     runtimeState
 ) {
@@ -220,7 +608,7 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
     }
 
     // evita múltiplas conexões do mesmo job
-    cleanupRuntimeConnection(jobId);
+    cleanupRuntimeSession(jobId);
 
     let reconnectState =
         runtimeReconnectStates.get(jobId);
@@ -399,29 +787,11 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
                         ) {
 
                             console.log(
-                                "[SSE STREAM COMPLETED]"
-                            );
-
-                            reconnectState.terminallyClosed = true;
-                            reconnectState.closedManually = true;
-
-                            console.log(
-                                "[SSE] terminal stream completed:",
+                                "[SSE STREAM COMPLETED]",
                                 jobId
                             );
 
-                            const existingConnection =
-                                runtimeConnections.get(jobId);
-
-                            if (existingConnection) {
-
-                                existingConnection.onopen = null;
-                                existingConnection.onerror = null;
-
-                                existingConnection.close();
-                            }
-
-                            runtimeConnections.delete(jobId);
+                            cleanupRuntimeSession(jobId);
 
                             return;
                         }
@@ -463,7 +833,14 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
 
                         if (runtimeState) {
 
+                            if (payload.status) {
+
+                                runtimeState.status =
+                                    payload.status;
+                            }
+
                             if (payload.stage) {
+
                                 runtimeState.stage =
                                     payload.stage;
                             }
@@ -561,6 +938,19 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
                 // HYDRATE SUMMARY
                 // ========================================
 
+                if (
+                    job.id !== activeDetailsJobId
+                ) {
+
+                    console.log(
+                        "[FALLBACK IGNORE] details ownership mismatch",
+                        job.id,
+                        activeDetailsJobId
+                    );
+
+                    return;
+                }
+
                 const summaryEl =
                     document.getElementById(
                         "job-summary"
@@ -595,14 +985,18 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
                     ) {
 
                         runtimeStage.innerText =
-                            "SUMMARIZING";
+                            getRuntimeStageLabel(
+                                "SUMMARIZING"
+                            );
 
                     } else if (
                         !job.transcription
                     ) {
 
                         runtimeStage.innerText =
-                            "TRANSCRIBING";
+                            getRuntimeStageLabel(
+                                "TRANSCRIBING"
+                            );
                     }
                 }
 
@@ -614,10 +1008,7 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
                     job.status === "DONE" ||
                     job.status === "FAILED"
                 ) {
-
-                    clearInterval(
-                        fallbackSyncInterval
-                    );
+                    cleanupRuntimeSession(jobId);
                 }
 
             } catch (err) {
@@ -632,6 +1023,11 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
         8000
     );
 
+    runtimeFallbackIntervals.set(
+        jobId,
+        fallbackSyncInterval
+    );
+
     return {
         close() {
 
@@ -641,7 +1037,7 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
                 fallbackSyncInterval
             );
 
-            cleanupRuntimeConnection(jobId);
+            cleanupRuntimeSession(jobId);
         }
     };
 }
@@ -851,6 +1247,55 @@ function getStatusLabel(status) {
     }
 }
 
+function getRuntimeStageLabel(
+    stage,
+    status = null
+) {
+
+    if (!stage && status === "DONE") {
+        return "✔ Processamento concluído";
+    }
+
+    if (!stage && status === "FAILED") {
+        return "❌ Falha no processamento";
+    }
+
+    if (!stage && status === "CANCELED") {
+        return "⛔ Processamento cancelado";
+    }
+
+    switch (
+        String(stage || "")
+            .trim()
+            .toUpperCase()
+        ) {
+
+        case "CREATED":
+            return "⏳ Inicializando processamento";
+
+        case "DOWNLOADED":
+            return "⬇ Download concluído";
+
+        case "TRANSCRIBING":
+            return "🎧 Transcrevendo áudio";
+
+        case "TRANSCRIBED":
+            return "✔ Transcrição concluída";
+
+        case "SUMMARIZING":
+            return "🧠 Gerando resumo";
+
+        case "SUMMARIZED":
+            return "✔ Resumo concluído";
+
+        case "COMPLETED":
+            return "✔ Processamento concluído";
+
+        default:
+            return stage || "Processando...";
+    }
+}
+
 function renderResults(items) {
     const resultsEl = document.getElementById("results");
     resultsEl.innerHTML = "";
@@ -870,6 +1315,91 @@ function renderResults(items) {
 
         div.onclick = () => {
             activeJobId = item.jobId;
+
+            // ========================================
+            // ACTIVE RUNTIME STREAM OWNERSHIP
+            // ========================================
+            switchActiveRuntimeStream(
+                item.jobId,
+                {
+                    onEvent(eventName, payload) {
+
+                        const runtimeState =
+                            runtimeStateStore.get(
+                                payload.jobId
+                            );
+
+                        if (
+                            runtimeState &&
+                            isTerminalRuntime(runtimeState)
+                        ) {
+
+                            console.log(
+                                "[SSE TERMINAL IGNORE]",
+                                payload.jobId,
+                                runtimeState.status
+                            );
+
+                            return;
+                        }
+
+                        if (!payload || payload.jobId !== activeJobId ) {
+
+                            console.log(
+                                "[JOB SWITCH IGNORE]",
+                                payload?.jobId,
+                                activeJobId
+                            );
+
+                            return;
+                        }
+
+                        if (!runtimeState) {
+                            return;
+                        }
+
+                        if (payload.stage) {
+
+                            runtimeState.stage =
+                                payload.stage;
+                        }
+
+                        if (
+                            typeof payload.progress ===
+                            "number"
+                        ) {
+
+                            runtimeState.progress =
+                                Math.max(
+                                    runtimeState.progress || 0,
+                                    payload.progress
+                                );
+                        }
+
+                        runtimeState.timeline =
+                            runtimeState.timeline || [];
+
+                        runtimeState.timeline.push({
+                            event: eventName,
+                            payload,
+                            timestamp:
+                                payload.timestamp ||
+                                Date.now()
+                        });
+
+                        if (
+                            runtimeState.timeline.length > 50
+                        ) {
+
+                            runtimeState.timeline.shift();
+                        }
+
+                        rerenderRuntimePanel(
+                            payload.jobId
+                        );
+                    }
+                }
+            );
 
             const detailsEl = document.getElementById("details");
 
@@ -1017,6 +1547,22 @@ async function loadDetails(jobId) {
 }
 
 function renderDetails(job) {
+    activeDetailsJobId = job.id;
+
+    if (
+        activeJobId &&
+        job.id !== activeJobId
+    ) {
+
+        console.log(
+            "[DETAILS RENDER IGNORE] inactive job",
+            job.id,
+            activeJobId
+        );
+
+        return;
+    }
+
     const detailsEl = document.getElementById("details");
 
     const createdAt = new Date(job.createdAt).toLocaleString();
@@ -1129,13 +1675,40 @@ function renderDetails(job) {
     document.getElementById("job-summary").innerText =
         job.summary || "(vazio)";
 
-    resetRuntimeUI();
+    // ========================================
+    // STATE-DRIVEN RUNTIME RESTORE
+    // ========================================
 
+    // evita reset destrutivo quando já existe
+    // estado realtime preservado no store
     if (runtimeState) {
 
-        restoreRuntimeState(runtimeState);
-    }
+        console.log(
+            "[RUNTIME UI] restore from store",
+            {
+                jobId: job.id,
+                timelineSize:
+                    runtimeState.timeline?.length || 0,
+                progress:
+                runtimeState.progress,
+                stage:
+                runtimeState.stage
+            }
+        );
 
+        restoreRuntimeState(runtimeState);
+
+    } else {
+
+        console.log(
+            "[RUNTIME UI] initialize empty runtime",
+            {
+                jobId: job.id
+            }
+        );
+
+        resetRuntimeUI();
+    }
 }
 
 async function ingest() {
@@ -1193,9 +1766,28 @@ async function ingest() {
         // START REALTIME SSE
         // ========================================
 
-        connectJobRuntimeStream(jobId, {
+        switchActiveRuntimeStream(jobId, {
 
             onEvent(eventName, payload) {
+
+                const runtimeState =
+                    runtimeStateStore.get(
+                        payload.jobId
+                    );
+
+                if (
+                    runtimeState &&
+                    isTerminalRuntime(runtimeState)
+                ) {
+
+                    console.log(
+                        "[SSE TERMINAL IGNORE]",
+                        payload.jobId,
+                        runtimeState.status
+                    );
+
+                    return;
+                }
 
                 if (!payload || payload.jobId !== activeJobId) {
 
@@ -1230,99 +1822,68 @@ async function ingest() {
                 }
 
                 // ========================================
-                // DETAILS RUNTIME UI
+                // STORE-FIRST RUNTIME RENDER
                 // ========================================
 
-                const runtimeStage =
-                    document.getElementById("runtime-stage");
+                if (runtimeState) {
 
-                if (runtimeStage) {
+                    // stage
+                    if (payload.stage) {
 
-                    runtimeStage.innerText =
-                        `${payload.stage || "-"}`;
-                }
-
-                const progressBar =
-                    document.getElementById(
-                        "runtime-progress-bar"
-                    );
-
-                const progressLabel =
-                    document.getElementById(
-                        "runtime-progress-label"
-                    );
-
-                if (
-                    progressBar &&
-                    progressLabel &&
-                    typeof payload.progress === "number"
-                ) {
-
-                    const progress =
-                        Math.max(
-                            0,
-                            Math.min(100, payload.progress)
-                        );
-
-                    progressBar.style.width =
-                        `${progress}%`;
-
-                    progressLabel.innerText =
-                        `${progress.toFixed(1)}%`;
-                }
-
-                // ========================================
-                // TIMELINE
-                // ========================================
-
-                const timeline =
-                    document.getElementById(
-                        "runtime-timeline"
-                    );
-
-                if (timeline) {
-
-                    const item =
-                        document.createElement("div");
-
-                    item.style.padding = "8px";
-                    item.style.borderRadius = "8px";
-                    item.style.background = "#f5f5f5";
-                    item.style.fontSize = "12px";
-                    item.style.borderLeft =
-                        "4px solid #1976d2";
-
-                    const time =
-                        new Date(
-                            payload.timestamp || Date.now()
-                        ).toLocaleTimeString();
-
-                    item.innerHTML = `
-                        <div style="font-weight:bold;">
-                            ${eventName}
-                        </div>
-
-                        <div style="margin-top:4px;">
-                            ${payload.message || "-"}
-                        </div>
-
-                        <div style="
-                            margin-top:4px;
-                            color:#666;
-                            font-size:11px;
-                        ">
-                            ${time}
-                        </div>
-                    `;
-
-                    timeline.prepend(item);
-
-                    // mantém timeline controlada
-                    while (timeline.children.length > 40) {
-                        timeline.removeChild(
-                            timeline.lastChild
-                        );
+                        runtimeState.stage =
+                            payload.stage;
                     }
+
+                    // progress
+                    if (
+                        typeof payload.progress ===
+                        "number"
+                    ) {
+
+                        // evita regressão visual
+                        runtimeState.progress =
+                            Math.max(
+                                runtimeState.progress || 0,
+                                payload.progress
+                            );
+                    }
+
+                    // timeline append-only
+                    runtimeState.timeline =
+                        runtimeState.timeline || [];
+
+                    runtimeState.timeline.push({
+                        event: eventName,
+                        payload,
+                        timestamp:
+                            payload.timestamp ||
+                            Date.now()
+                    });
+
+                    // limite memória
+                    if (
+                        runtimeState.timeline.length > 50
+                    ) {
+
+                        runtimeState.timeline.shift();
+                    }
+
+                    console.log(
+                        "[RUNTIME STORE UPDATED]",
+                        {
+                            jobId: payload.jobId,
+                            event: eventName,
+                            stage: runtimeState.stage,
+                            progress:
+                            runtimeState.progress,
+                            timeline:
+                            runtimeState.timeline.length
+                        }
+                    );
+
+                    rerenderRuntimePanel(
+                        payload.jobId
+                    );
                 }
 
                 // ========================================
@@ -1335,9 +1896,10 @@ async function ingest() {
                     eventName === "job_failed"
                 ) {
 
-                    runtimeStateStore.delete(
-                        payload.jobId
-                    );
+                    runtimeState.status =
+                        eventName === "job_completed"
+                            ? "DONE"
+                            : "FAILED";
 
                     updateIngestUI({
                         status:
@@ -1455,6 +2017,28 @@ function pollStatus(jobId) {
 }
 
 function updateIngestUI(job, elapsedSec = null) {
+
+    if (!job) {
+        return;
+    }
+
+    // ownership hardening
+    if (
+        activeJobId &&
+        job.id !== activeJobId
+    ) {
+
+        console.log(
+            "[UI OWNERSHIP] ignored stale panel update",
+            {
+                incomingJobId: job.id,
+                activeJobId
+            }
+        );
+
+        return;
+    }
+
     const statusEl = document.getElementById("ingestStatus");
     const detailsEl = document.getElementById("details");
     const searchInput = document.getElementById("searchInput");
@@ -1514,9 +2098,29 @@ function updateIngestUI(job, elapsedSec = null) {
             const runtimeStage =
                 document.getElementById("runtime-stage");
 
+            const isTerminalStatus =
+                job.status === "DONE" ||
+                job.status === "FAILED" ||
+                job.status === "CANCELED";
+
             if (runtimeStage) {
 
-                runtimeStage.innerText = "COMPLETED";
+                if (isTerminalStatus) {
+
+                    runtimeStage.innerText =
+                        getRuntimeStageLabel(
+                            job.status
+                        );
+
+                } else {
+
+                    runtimeStage.innerText =
+                        getRuntimeStageLabel(
+                            runtimeStateStore
+                                .get(job.id)
+                                ?.stage || "CREATED"
+                        );
+                }
             }
         }
 
@@ -1613,13 +2217,41 @@ async function loadJobs() {
 }
 
 async function stopPolling() {
+
     if (activeJobId) {
+
         try {
-            await fetch(`/jobs/${activeJobId}/cancel`, {
-                method: "POST"
-            });
+
+            await fetch(
+                `/jobs/${activeJobId}/cancel`,
+                {
+                    method: "POST"
+                }
+            );
+
+            // ========================================
+            // TERMINAL RUNTIME CLEANUP
+            // ========================================
+
+            if (activeRuntimeStream) {
+
+                runtimeStreamsByJob.delete(
+                    activeJobId
+                );
+
+                activeRuntimeStream.close();
+
+                activeRuntimeStream = null;
+            }
+
+            activeJobId = null;
+
         } catch (e) {
-            console.error("Erro ao cancelar job:", e);
+
+            console.error(
+                "Erro ao cancelar job:",
+                e
+            );
         }
     }
 
@@ -1633,8 +2265,11 @@ async function stopPolling() {
         clearTimeout(ingestInterval);
     }
 
-    document.getElementById("status").innerText = "Atualização pausada";
-    document.getElementById("ingestStatus").innerText = "Processamento pausado";
+    document.getElementById("status").innerText =
+        "Atualização pausada";
+
+    document.getElementById("ingestStatus").innerText =
+        "Processamento pausado";
 }
 
 function toggleSelectAll(master) {
@@ -1725,29 +2360,58 @@ window.addEventListener(
                 return;
             }
 
-            connectJobRuntimeStream(
+            switchActiveRuntimeStream(
                 savedJobId,
                 {
                     onEvent(eventName, payload) {
 
-                        if (
-                            !payload ||
-                            payload.jobId !== activeJobId
-                        ) {
-                            return;
-                        }
-
-                        const runtimeStage =
-                            document.getElementById(
-                                "runtime-stage"
+                        const runtimeState =
+                            runtimeStateStore.get(
+                                payload.jobId
                             );
 
                         if (
-                            runtimeStage &&
-                            payload.stage
+                            runtimeState &&
+                            isTerminalRuntime(runtimeState)
                         ) {
 
-                            runtimeStage.innerText =
+                            console.log(
+                                "[SSE TERMINAL IGNORE]",
+                                payload.jobId,
+                                runtimeState.status
+                            );
+
+                            return;
+                        }
+
+                        if (!payload || payload.jobId !== activeJobId ) {
+
+                            console.log(
+                                "[RECOVERY SSE IGNORE] inactive payload",
+                                payload?.jobId,
+                                activeJobId
+                            );
+
+                            return;
+                        }
+
+                        if (!runtimeState) {
+
+                            console.warn(
+                                "[RECOVERY SSE] missing runtime state",
+                                payload.jobId
+                            );
+
+                            return;
+                        }
+
+                        // ========================================
+                        // STORE-FIRST UPDATE
+                        // ========================================
+
+                        if (payload.stage) {
+
+                            runtimeState.stage =
                                 payload.stage;
                         }
 
@@ -1756,14 +2420,46 @@ window.addEventListener(
                             "number"
                         ) {
 
-                            updateDownloadProgress(
-                                payload.progress
-                            );
+                            runtimeState.progress =
+                                Math.max(
+                                    runtimeState.progress || 0,
+                                    payload.progress
+                                );
                         }
 
-                        appendRuntimeEvent(
-                            eventName,
-                            payload
+                        runtimeState.timeline =
+                            runtimeState.timeline || [];
+
+                        runtimeState.timeline.push({
+                            event: eventName,
+                            payload,
+                            timestamp:
+                                payload.timestamp ||
+                                Date.now()
+                        });
+
+                        if (
+                            runtimeState.timeline.length > 50
+                        ) {
+
+                            runtimeState.timeline.shift();
+                        }
+
+                        console.log(
+                            "[RECOVERY STORE UPDATED]",
+                            {
+                                jobId: payload.jobId,
+                                event: eventName,
+                                stage: runtimeState.stage,
+                                progress:
+                                runtimeState.progress,
+                                timeline:
+                                runtimeState.timeline.length
+                            }
+                        );
+
+                        rerenderRuntimePanel(
+                            payload.jobId
                         );
                     }
                 }

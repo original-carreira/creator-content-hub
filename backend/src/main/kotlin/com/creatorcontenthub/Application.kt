@@ -276,7 +276,8 @@ fun Application.module() {
     )
 
     val orphanRecoveryWorker = OrphanRecoveryWorker(
-        queueRepository = jobQueueRepository
+        queueRepository = jobQueueRepository,
+        jobRepository = jobRepository
     )
 
     // =============================

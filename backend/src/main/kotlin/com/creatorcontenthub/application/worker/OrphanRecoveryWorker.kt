@@ -5,7 +5,8 @@ import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
 
 class OrphanRecoveryWorker(
-    private val queueRepository: JobQueueRepository
+    private val queueRepository: JobQueueRepository,
+    private val jobRepository: com.creatorcontenthub.application.port.JobRepository
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -46,6 +47,35 @@ class OrphanRecoveryWorker(
                         item.lastHeartbeatAt,
                         heartbeatTimeoutMs
                     )
+
+                    val job =
+                        jobRepository.findById(
+                            item.jobId
+                        )
+
+                    if (
+                        job != null &&
+                        (
+                                job.status.name == "CANCELED" ||
+                                        job.status.name == "DONE" ||
+                                        job.status.name == "FAILED"
+                                )
+                    ) {
+
+                        logger.info(
+                            "event=orphan_terminal_ignored queueId={} jobId={} status={}",
+                            item.id,
+                            item.jobId,
+                            job.status
+                        )
+
+                        queueRepository.markCompleted(
+                            item.id!!,
+                            System.currentTimeMillis()
+                        )
+
+                        continue
+                    }
 
                     if (item.attempts >= maxAttempts) {
 
