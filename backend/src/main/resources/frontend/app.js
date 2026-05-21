@@ -15,7 +15,11 @@ let currentMode = "idle"; // "search" | "jobs"
 
 const runtimeConnections = new Map();
 
+const runtimeConnectionLocks = new Map();
+
 const runtimeReconnectTimers = new Map();
+
+const runtimeSessions = new Map();
 
 const runtimeListeners = new Map();
 
@@ -23,8 +27,7 @@ const runtimeReconnectStates = new Map();
 
 const runtimeStateStore = new Map();
 
-const runtimeStreamsByJob =
-    new Map();
+const runtimeStreamsByJob = new Map();
 
 const runtimeFallbackIntervals = new Map();
 
@@ -37,6 +40,264 @@ const TERMINAL_STATUSES = new Set([
 const MAX_RUNTIME_RECONNECT_ATTEMPTS = 10;
 
 const BASE_RECONNECT_DELAY = 2000;
+
+function createRuntimeSession(jobId) {
+
+    let session = runtimeSessions.get(jobId);
+
+    if (session) {
+        return session;
+    }
+
+    session = {
+        jobId,
+        ownerId: crypto.randomUUID(),
+
+        generation: 0,
+
+        createdAt: Date.now(),
+
+        activeConnectionGeneration: null,
+
+        eventSource: null,
+
+        reconnectTimer: null,
+        fallbackInterval: null,
+
+        reconnectState: {
+            attempts: 0,
+            closedManually: false,
+            terminallyClosed: false
+        },
+
+        handlers: null
+    };
+
+    runtimeSessions.set(jobId, session);
+
+    console.log(
+        "[RUNTIME_SESSION] created",
+        { jobId }
+    );
+
+    return session;
+}
+
+function ensureRuntimeConnection(jobId) {
+
+    const session =
+        getRuntimeSession(jobId);
+
+    if (
+        session?.eventSource &&
+        session.eventSource.readyState !== EventSource.CLOSED
+    ) {
+
+        console.log(
+            "[RUNTIME CONNECTION] reuse",
+            { jobId }
+        );
+
+        return session.eventSource;
+    }
+
+    return null;
+}
+
+function getRuntimeSession(jobId) {
+    return runtimeSessions.get(jobId);
+}
+
+function destroyRuntimeSession(jobId) {
+
+    const session =
+        runtimeSessions.get(jobId);
+
+    if (!session) {
+        return;
+    }
+
+    console.log(
+        "[RUNTIME_SESSION] destroy",
+        { jobId }
+    );
+
+    runtimeSessions.delete(jobId);
+}
+
+function createCanonicalRuntimeState(jobId) {
+
+return {
+    jobId,
+    version: 0,
+    status: null,
+    stage: null,
+    progress: 0,
+    timeline: [],
+    retryState: null,
+    workerState: null,
+    isTerminal: false,
+    lastUpdate: Date.now(),
+    lastEventId: null,
+    hydrationVersion: 0
+};
+
+}
+
+function applyRuntimeMutation(
+    jobId,
+    eventName,
+    payload = {},
+    source = "unknown"
+) {
+
+if (!jobId) {
+    return null;
+}
+
+let runtimeState =
+    runtimeStateStore.get(jobId);
+
+if (!runtimeState) {
+
+    runtimeState =
+        createCanonicalRuntimeState(jobId);
+
+    runtimeStateStore.set(
+        jobId,
+        runtimeState
+    );
+
+    console.log(
+        "[RUNTIME] canonical state created",
+        { jobId }
+    );
+}
+
+// ========================================
+// TERMINAL IMMUTABILITY
+// ========================================
+
+if (runtimeState.isTerminal) {
+
+    console.log(
+        "[terminal_runtime_preserved]",
+        {
+            jobId,
+            source,
+            eventName
+        }
+    );
+
+    return runtimeState;
+}
+
+// ========================================
+// STATUS
+// ========================================
+
+if (payload.status) {
+
+    runtimeState.status =
+        payload.status;
+}
+
+// ========================================
+// TERMINAL LOCK
+// ========================================
+
+if (
+    payload.status === "DONE" ||
+    payload.status === "FAILED" ||
+    payload.status === "CANCELED" ||
+    eventName === "job_completed" ||
+    eventName === "job_failed" ||
+    eventName === "dlq_transition"
+) {
+
+    runtimeState.isTerminal = true;
+
+    runtimeState.progress = 100;
+
+    console.log(
+        "[runtime_terminal_locked]",
+        {
+            jobId,
+            status: payload.status,
+            eventName
+        }
+    );
+}
+
+// ========================================
+// STAGE
+// ========================================
+
+if (payload.stage) {
+
+    runtimeState.stage =
+        payload.stage;
+}
+
+// ========================================
+// MONOTONIC PROGRESS
+// ========================================
+
+if (
+    typeof payload.progress ===
+    "number"
+) {
+
+    runtimeState.progress =
+        Math.max(
+            runtimeState.progress || 0,
+            payload.progress
+        );
+}
+
+// ========================================
+// TIMELINE APPEND-ONLY
+// ========================================
+
+runtimeState.timeline.push({
+    event: eventName,
+    payload,
+    timestamp: Date.now(),
+    source
+});
+
+// proteção memória
+if (runtimeState.timeline.length > 50) {
+
+    runtimeState.timeline.shift();
+}
+
+// ========================================
+// METADATA
+// ========================================
+
+runtimeState.version++;
+
+runtimeState.lastUpdate =
+    Date.now();
+
+console.log(
+    "[runtime_snapshot_updated]",
+    {
+        jobId,
+        version: runtimeState.version,
+        source,
+        eventName,
+        status: runtimeState.status,
+        stage: runtimeState.stage,
+        progress: runtimeState.progress,
+        timeline:
+            runtimeState.timeline.length
+    }
+);
+
+return runtimeState;
+}
 
 // ========================================
 // SSE CONNECTION MANAGEMENT
@@ -66,27 +327,53 @@ function cleanupRuntimeConnection(jobId) {
 
 function cleanupRuntimeSession(jobId) {
 
+    const session =
+        getRuntimeSession(jobId);
+
     console.log(
         "[RUNTIME CLEANUP] start",
         jobId
     );
 
     // SSE CONNECTION
-    const connection =
+    const eventSource =
+        session?.eventSource ||
         runtimeConnections.get(jobId);
 
-    if (connection) {
+    if (eventSource) {
 
-        connection.onopen = null;
-        connection.onerror = null;
+        eventSource.onopen = null;
+        eventSource.onerror = null;
 
-        connection.close();
+        eventSource.close();
+    }
 
-        runtimeConnections.delete(jobId);
+    runtimeConnections.delete(jobId);
+
+    if (session) {
+
+        session.eventSource = null;
+    }
+
+    if (session) {
+
+        session.generation++;
+
+        session.activeConnectionGeneration = null;
+
+        console.log(
+            "[RUNTIME SESSION INVALIDATED]",
+            {
+                jobId,
+                ownerId: session.ownerId,
+                generation: session.generation
+            }
+        );
     }
 
     // RECONNECT TIMER
     const reconnectTimer =
+        session?.reconnectTimer ||
         runtimeReconnectTimers.get(jobId);
 
     if (reconnectTimer) {
@@ -111,7 +398,14 @@ function cleanupRuntimeSession(jobId) {
     runtimeListeners.delete(jobId);
 
     // STREAM REGISTRY
-    runtimeStreamsByJob.delete(jobId);
+    //runtimeStreamsByJob.delete(jobId);
+    // preserve runtime ownership registry
+    // during graceful/terminal cleanup
+
+    console.log(
+        "[RUNTIME CLEANUP] stream registry preserved",
+        jobId
+    );
 
     // RECONNECT STATE
     const reconnectState =
@@ -120,9 +414,19 @@ function cleanupRuntimeSession(jobId) {
     if (reconnectState) {
 
         reconnectState.terminallyClosed = true;
-        reconnectState.closedManually = true;
     }
-    runtimeReconnectStates.delete(jobId);
+
+    console.log(
+        "[RUNTIME CLEANUP] reconnect lifecycle preserved",
+        jobId
+    );
+
+    //runtimeReconnectStates.delete(jobId);
+    // preserve reconnect lifecycle metadata
+    console.log(
+        "[RUNTIME CLEANUP] reconnect state preserved",
+        jobId
+    );
 
     // ACTIVE STREAM
     if (
@@ -134,23 +438,27 @@ function cleanupRuntimeSession(jobId) {
     }
 
     // ACTIVE JOB
-    if (activeJobId === jobId) {
-
-        activeJobId = null;
-    }
+    // terminal ownership preservation
+    // NÃO limpar activeJobId durante cleanup normal
 
     // LOCAL STORAGE
-    const savedJobId =
-        localStorage.getItem(
-            "activeRuntimeJobId"
-        );
+    // terminal runtime preservation
+    // NÃO remover activeRuntimeJobId
+    // durante cleanup terminal/graceful
 
-    if (savedJobId === jobId) {
+    console.log(
+        "[RUNTIME CLEANUP] terminal runtime preserved",
+        {
+            jobId,
+            activeJobId
+        }
+    );
 
-        localStorage.removeItem(
-            "activeRuntimeJobId"
-        );
-    }
+    runtimeConnectionLocks.delete(
+        jobId
+    );
+
+    destroyRuntimeSession(jobId);
 
     console.log(
         "[RUNTIME CLEANUP] completed",
@@ -162,6 +470,27 @@ function switchActiveRuntimeStream(jobId, handlers = {}) {
 
     const existingStream =
         runtimeStreamsByJob.get(jobId);
+
+    console.log(
+        "[RUNTIME STREAM CONNECT REQUEST]",
+        {
+            jobId,
+
+            activeJobId,
+
+            hasExistingStream:
+                runtimeStreamsByJob.has(jobId),
+
+            hasRuntimeConnection:
+                runtimeConnections.has(jobId),
+
+            hasSession:
+                runtimeSessions.has(jobId),
+
+            stack:
+            new Error().stack
+        }
+    );
 
     if (existingStream) {
 
@@ -186,6 +515,13 @@ function switchActiveRuntimeStream(jobId, handlers = {}) {
         console.log(
             "[RUNTIME STREAM] closing previous active stream"
         );
+
+        if (activeJobId) {
+
+            runtimeStreamsByJob.delete(
+                activeJobId
+            );
+        }
 
         activeRuntimeStream.close();
 
@@ -415,16 +751,31 @@ function rerenderRuntimeTimeline(runtimeState) {
         return;
     }
 
-    // evita rebuild redundante
-    const expectedCount =
-        runtimeState.timeline.length;
+    const incomingSignature =
+        JSON.stringify(
+            runtimeState.timeline.map(item => ({
+                event: item.event,
+                timestamp: item.timestamp
+            }))
+        );
+
+    const currentSignature =
+        timeline.dataset.signature || "";
 
     if (
-        timeline.children.length ===
-        expectedCount
+        currentSignature ===
+        incomingSignature
     ) {
+
+        console.log(
+            "[TIMELINE RERENDER SKIPPED] identical signature"
+        );
+
         return;
     }
+
+    timeline.dataset.signature =
+        incomingSignature;
 
     timeline.innerHTML = "";
 
@@ -442,7 +793,8 @@ function rerenderRuntimeTimeline(runtimeState) {
     console.log(
         "[RUNTIME UI] timeline rerender",
         {
-            items: expectedCount
+            items:
+            runtimeState.timeline.length
         }
     );
 }
@@ -502,7 +854,10 @@ function rerenderRuntimePanel(jobId) {
         ) {
 
             runtimeStage.innerText =
-                runtimeState.stage;
+                getRuntimeStageLabel(
+                    runtimeState.stage,
+                    runtimeState.status
+                );
         }
 
         // preserva progress final
@@ -553,90 +908,61 @@ function rerenderRuntimePanel(jobId) {
 function restoreRuntimeState(
     runtimeState
 ) {
-    clearRuntimeTimeline();
 
     if (!runtimeState) {
         return;
     }
 
-    if (
-        typeof runtimeState.progress ===
-        "number"
-    ) {
-
-        updateDownloadProgress(
-            runtimeState.progress
-        );
-    }
-
-    if (runtimeState.stage) {
-
-        const runtimeStage =
-            document.getElementById(
-                "runtime-stage"
-            );
-
-        if (runtimeStage) {
-
-            runtimeStage.innerText =
-                runtimeState.stage;
+    console.log(
+        "[RUNTIME HYDRATION RESTORE]",
+        {
+            jobId: runtimeState.jobId,
+            stage: runtimeState.stage,
+            progress: runtimeState.progress,
+            timeline:
+                runtimeState.timeline?.length || 0,
+            terminal:
+            runtimeState.isTerminal
         }
-    }
+    );
 
-    if (
-        Array.isArray(
-            runtimeState.timeline
-        )
-    ) {
-
-        runtimeState.timeline.forEach(
-            item => {
-
-                appendRuntimeEvent(
-                    item.event,
-                    item.payload
-                );
-            }
-        );
-    }
+    rerenderRuntimePanel(
+        runtimeState.jobId
+    );
 }
 
 function connectJobRuntimeStream(jobId, handlers = {}) {
+
+    console.log(
+        "[SSE CONNECT ATTEMPT]",
+        {
+            jobId,
+            existingConnection:
+                runtimeConnections.has(jobId),
+            activeJobId,
+            existingStream:
+                runtimeStreamsByJob.has(jobId)
+        }
+    );
 
     if (!jobId) {
         return;
     }
 
-    // evita múltiplas conexões do mesmo job
-    cleanupRuntimeSession(jobId);
+    const session =
+        createRuntimeSession(jobId);
 
-    let reconnectState =
-        runtimeReconnectStates.get(jobId);
-
-    if (!reconnectState) {
-
-        reconnectState = {
-            attempts: 0,
-            closedManually: false,
-            terminallyClosed: false
-        };
-
-        runtimeReconnectStates.set(
-            jobId,
-            reconnectState
-        );
-    };
+    const reconnectState =
+        session.reconnectState;
 
     if (!runtimeStateStore.has(jobId)) {
-
         runtimeStateStore.set(
             jobId,
-            {
-                timeline: [],
-                progress: 0,
-                stage: null,
-                summary: null
-            }
+            createCanonicalRuntimeState(jobId)
+        );
+        console.log(
+            "[RUNTIME] canonical bootstrap initialized",
+            { jobId }
         );
     }
 
@@ -646,12 +972,133 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
 
     function connect() {
 
+        const connectionGeneration =
+            session.generation;
+
+        session.activeConnectionGeneration =
+            connectionGeneration;
+
+        console.log(
+            "[RUNTIME OWNERSHIP SNAPSHOT]",
+            {
+                jobId,
+
+                activeJobId,
+
+                hasRuntimeConnection:
+                    runtimeConnections.has(jobId),
+
+                hasRuntimeStream:
+                    runtimeStreamsByJob.has(jobId),
+
+                hasSession:
+                    runtimeSessions.has(jobId),
+
+                sessionGeneration:
+                session?.generation,
+
+                hasEventSource:
+                    !!session?.eventSource,
+
+                eventSourceReadyState:
+                session?.eventSource?.readyState,
+
+                reconnectAttempts:
+                session?.reconnectState?.attempts,
+
+                terminallyClosed:
+                session?.reconnectState?.terminallyClosed
+            }
+        );
+
+        if (
+            session.generation !==
+            connectionGeneration
+        ) {
+
+            console.log(
+                "[SSE CONNECT ABORTED] stale generation",
+                {
+                    jobId,
+                    expectedGeneration:
+                    connectionGeneration,
+                    currentGeneration:
+                    session.generation,
+                    ownerId:
+                    session.ownerId
+                }
+            );
+
+            return;
+        }
+
         if (reconnectState.closedManually) {
             return;
         }
 
+        if (
+            runtimeConnectionLocks.get(jobId)
+        ) {
+
+            console.log(
+                "[SSE CONNECT BLOCKED] connection lock active",
+                jobId
+            );
+
+            return;
+        }
+
+        const reusableConnection =
+            ensureRuntimeConnection(jobId);
+
+        if (reusableConnection) {
+
+            console.log(
+                "[RUNTIME CONNECTION] transport reused",
+                { jobId }
+            );
+
+            session.handlers =
+                handlers;
+
+            runtimeListeners.set(
+                jobId,
+                handlers
+            );
+
+            runtimeConnections.set(
+                jobId,
+                reusableConnection
+            );
+
+            return;
+        }
+
+        if (
+            runtimeConnections.has(jobId)
+        ) {
+
+            console.log(
+                "[SSE CONNECT BLOCKED] already connected",
+                jobId
+            );
+
+            return;
+        }
+
+        runtimeConnectionLocks.set(
+            jobId,
+            true
+        );
+
         const eventSource =
             new EventSource(`/jobs/${jobId}/events`);
+
+        session.eventSource =
+            eventSource;
+
+        session.handlers =
+            handlers;
 
         runtimeConnections.set(jobId, eventSource);
 
@@ -661,6 +1108,10 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
 
             console.log(
                 "[SSE] connected:",
+                jobId
+            );
+
+            runtimeConnectionLocks.delete(
                 jobId
             );
         };
@@ -675,6 +1126,11 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
             eventSource.close();
 
             runtimeConnections.delete(jobId);
+
+            if (session) {
+
+                session.eventSource = null;
+            }
 
             if (reconnectState.closedManually) {
                 return;
@@ -709,9 +1165,34 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
                 BASE_RECONNECT_DELAY *
                 reconnectState.attempts;
 
+            if (session?.reconnectTimer) {
+
+                clearTimeout(
+                    session.reconnectTimer
+                );
+            }
+
             const timer = setTimeout(() => {
+
+                if (
+                    reconnectState.closedManually ||
+                    reconnectState.terminallyClosed
+                ) {
+
+                    console.log(
+                        "[SSE RECONNECT ABORTED]",
+                        { jobId }
+                    );
+
+                    return;
+                }
+
                 connect();
+
             }, delay);
+
+            session.reconnectTimer =
+                timer;
 
             runtimeReconnectTimers.set(
                 jobId,
@@ -735,14 +1216,6 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
             eventSource.addEventListener(
                 eventName,
                 (event) => {
-
-                    console.log(
-                        "[SSE RAW EVENT]",
-                        {
-                            eventName,
-                            rawData: event.data
-                        }
-                    );
 
                     try {
 
@@ -815,45 +1288,30 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
                         const runtimeState =
                             runtimeStateStore.get(jobId);
 
-                        if (runtimeState) {
+                        // TERMINAL MUTATION BLOCK
+                        if (
+                            runtimeState &&
+                            runtimeState.isTerminal
+                        ){
 
-                            runtimeState.timeline.push({
-                                event: eventName,
+                            console.log(
+                                "[TERMINAL MUTATION BLOCKED]",
+                                {
+                                    jobId,
+                                    eventName
+                                }
+                            );
+
+                            return;
+                        }
+
+                        const updatedRuntimeState =
+                            applyRuntimeMutation(
+                                jobId,
+                                eventName,
                                 payload,
-                                timestamp: Date.now()
-                            });
-
-                            // limitar memória
-                            if (
-                                runtimeState.timeline.length > 50
-                            ) {
-                                runtimeState.timeline.shift();
-                            }
-                        }
-
-                        if (runtimeState) {
-
-                            if (payload.status) {
-
-                                runtimeState.status =
-                                    payload.status;
-                            }
-
-                            if (payload.stage) {
-
-                                runtimeState.stage =
-                                    payload.stage;
-                            }
-
-                            if (
-                                typeof payload.progress ===
-                                "number"
-                            ) {
-
-                                runtimeState.progress =
-                                    payload.progress;
-                            }
-                        }
+                                "sse_primary"
+                            );
 
                         console.log(
                             "[SSE PARSED]",
@@ -969,35 +1427,50 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
                 // HYDRATE TRANSCRIPTION STATUS
                 // ========================================
 
-                const runtimeStage =
-                    document.getElementById(
-                        "runtime-stage"
-                    );
+                const runtimeState =
+                    runtimeStateStore.get(job.id);
 
                 if (
-                    runtimeStage &&
+                    runtimeState &&
                     job.status === "PROCESSING"
                 ) {
+
+                    // TERMINAL IMMUTABILITY
+                    if (runtimeState.isTerminal) {
+
+                        console.log(
+                            "[FALLBACK TERMINAL IGNORE]",
+                            job.id
+                        );
+
+                        return;
+                    }
 
                     if (
                         job.transcription &&
                         !job.summary
                     ) {
 
-                        runtimeStage.innerText =
-                            getRuntimeStageLabel(
-                                "SUMMARIZING"
-                            );
+                        runtimeState.stage =
+                            "SUMMARIZING";
 
                     } else if (
                         !job.transcription
                     ) {
 
-                        runtimeStage.innerText =
-                            getRuntimeStageLabel(
-                                "TRANSCRIBING"
-                            );
+                        runtimeState.stage =
+                            "TRANSCRIBING";
                     }
+
+                    console.log(
+                        "[FALLBACK STORE UPDATE APPLIED]",
+                        {
+                            jobId: job.id,
+                            stage: runtimeState.stage
+                        }
+                    );
+
+                    rerenderRuntimePanel(job.id);
                 }
 
                 // ========================================
@@ -1376,24 +1849,6 @@ function renderResults(items) {
                                 );
                         }
 
-                        runtimeState.timeline =
-                            runtimeState.timeline || [];
-
-                        runtimeState.timeline.push({
-                            event: eventName,
-                            payload,
-                            timestamp:
-                                payload.timestamp ||
-                                Date.now()
-                        });
-
-                        if (
-                            runtimeState.timeline.length > 50
-                        ) {
-
-                            runtimeState.timeline.shift();
-                        }
-
                         rerenderRuntimePanel(
                             payload.jobId
                         );
@@ -1538,6 +1993,20 @@ async function loadDetails(jobId) {
             throw new Error("Erro ao carregar detalhes");
         }
 
+        if (jobId !== activeJobId) {
+
+            console.log(
+                "[DETAIL LOAD IGNORE] stale async response",
+                {
+                    requestedJobId: jobId,
+                    activeJobId
+                }
+            );
+
+            // evita overwrite visual tardio
+            return;
+        }
+
         renderDetails(data.data);
 
     } catch (err) {
@@ -1547,27 +2016,13 @@ async function loadDetails(jobId) {
 }
 
 function renderDetails(job) {
-    activeDetailsJobId = job.id;
-
-    if (
-        activeJobId &&
-        job.id !== activeJobId
-    ) {
-
-        console.log(
-            "[DETAILS RENDER IGNORE] inactive job",
-            job.id,
-            activeJobId
-        );
-
-        return;
-    }
 
     const detailsEl = document.getElementById("details");
 
     const createdAt = new Date(job.createdAt).toLocaleString();
 
     let processingTime = "-";
+
     if (job.startedAt && job.finishedAt) {
         const duration = (job.finishedAt - job.startedAt) / 1000 / 60;
         processingTime = duration.toFixed(2) + " min";
@@ -1575,6 +2030,44 @@ function renderDetails(job) {
 
     const runtimeState =
         runtimeStateStore.get(job.id);
+
+    const existingRuntimePanel =
+        document.getElementById(
+            "runtime-stage"
+        );
+
+    const isSameActiveJob =
+        activeDetailsJobId === job.id;
+
+    if (
+        existingRuntimePanel &&
+        isSameActiveJob
+    ) {
+
+        console.log(
+            "[RENDER DETAILS] destructive rerender skipped",
+            {
+                jobId: job.id
+            }
+        );
+
+        const summaryEl =
+            document.getElementById(
+                "job-summary"
+            );
+
+        if (summaryEl) {
+
+            summaryEl.innerText =
+                job.summary || "(vazio)";
+        }
+
+        rerenderRuntimePanel(job.id);
+
+        return;
+    }
+
+    activeDetailsJobId = job.id;
 
     detailsEl.innerHTML = `
         <div class="detail-block">
@@ -1848,18 +2341,6 @@ async function ingest() {
                             );
                     }
 
-                    // timeline append-only
-                    runtimeState.timeline =
-                        runtimeState.timeline || [];
-
-                    runtimeState.timeline.push({
-                        event: eventName,
-                        payload,
-                        timestamp:
-                            payload.timestamp ||
-                            Date.now()
-                    });
-
                     // limite memória
                     if (
                         runtimeState.timeline.length > 50
@@ -2103,24 +2584,50 @@ function updateIngestUI(job, elapsedSec = null) {
                 job.status === "FAILED" ||
                 job.status === "CANCELED";
 
-            if (runtimeStage) {
+            const runtimeState =
+                runtimeStateStore.get(job.id);
+
+            if (runtimeState) {
+
+                // TERMINAL IMMUTABILITY
+                if (runtimeState.isTerminal) {
+
+                    console.log(
+                        "[UPDATE INGEST UI] terminal runtime preserved",
+                        job.id
+                    );
+
+                    rerenderRuntimePanel(job.id);
+
+                    return;
+                }
 
                 if (isTerminalStatus) {
 
-                    runtimeStage.innerText =
-                        getRuntimeStageLabel(
-                            job.status
-                        );
+                    runtimeState.status =
+                        job.status;
+
+                    runtimeState.isTerminal = true;
+
+                    runtimeState.progress = 100;
 
                 } else {
 
-                    runtimeStage.innerText =
-                        getRuntimeStageLabel(
-                            runtimeStateStore
-                                .get(job.id)
-                                ?.stage || "CREATED"
-                        );
+                    runtimeState.stage =
+                        runtimeState.stage ||
+                        "CREATED";
                 }
+
+                console.log(
+                    "[UPDATE INGEST UI] store update applied",
+                    {
+                        jobId: job.id,
+                        status: runtimeState.status,
+                        stage: runtimeState.stage
+                    }
+                );
+
+                rerenderRuntimePanel(job.id);
             }
         }
 
@@ -2426,17 +2933,6 @@ window.addEventListener(
                                     payload.progress
                                 );
                         }
-
-                        runtimeState.timeline =
-                            runtimeState.timeline || [];
-
-                        runtimeState.timeline.push({
-                            event: eventName,
-                            payload,
-                            timestamp:
-                                payload.timestamp ||
-                                Date.now()
-                        });
 
                         if (
                             runtimeState.timeline.length > 50

@@ -62,58 +62,66 @@ class IngestYoutubeUseCase(
                 videoId
             )
 
+            if (videoId == null) {
+
+                logger.warn(
+                    "event=invalid_youtube_url requestId={} url={}",
+                    requestId,
+                    request.url
+                )
+
+                throw IllegalArgumentException(
+                    "Invalid YouTube URL"
+                )
+            }
+
             // CACHE CHECK SEGURO (NULL SAFE)
-            if (videoId != null) {
+            val existing = jobRepository.findWithIdByVideoId(videoId)
 
-                val existing = jobRepository.findWithIdByVideoId(videoId)
 
-                if (existing != null) {
 
-                    val (existingJobId, existingJob) = existing
+            if (existing != null) {
+                val (existingJobId, existingJob) = existing
+                val decision = existingJobResolver.resolve(existingJob)
 
-                    val decision = existingJobResolver.resolve(existingJob)
+                logger.info(
+                    "event=existing_job_detected jobId={} videoId={} existingJobId={} status={} stage={} decision={}",
+                    jobId,
+                    videoId,
+                    existingJobId,
+                    existingJob.status,
+                    existingJob.stage,
+                    decision
+                )
 
-                    logger.info(
-                        "event=existing_job_detected jobId={} videoId={} existingJobId={} status={} stage={} decision={}",
-                        jobId,
-                        videoId,
-                        existingJobId,
-                        existingJob.status,
-                        existingJob.stage,
-                        decision
-                    )
+                when (decision) {
+                    ExistingJobDecision.REUSE_COMPLETED,
+                    ExistingJobDecision.RETURN_PROCESSING,
+                    ExistingJobDecision.ALLOW_RESUME -> {
 
-                    when (decision) {
-
-                        ExistingJobDecision.REUSE_COMPLETED,
-                        ExistingJobDecision.RETURN_PROCESSING,
-                        ExistingJobDecision.ALLOW_RESUME -> {
-
-                            return IngestYoutubeResponse(
-                                jobId = existingJobId,
-                                status = existingJob.status.name,
-                                stage = existingJob.stage.name,
-                                reused = true,
-                                resumeAvailable =
+                        return IngestYoutubeResponse(
+                            jobId = existingJobId,
+                            status = existingJob.status.name,
+                            stage = existingJob.stage.name,
+                            reused = true,
+                            resumeAvailable =
                                     decision == ExistingJobDecision.ALLOW_RESUME &&
                                             existingJob.stage != JobStage.UNKNOWN &&
                                             existingJob.stage != JobStage.COMPLETED
-                            )
-                        }
+                        )
+                    }
 
-                        ExistingJobDecision.CREATE_NEW -> {
-                            logger.info(
-                                "event=create_new_job_allowed videoId={}",
-                                videoId
-                            )
-                        }
+                    ExistingJobDecision.CREATE_NEW -> {
+                        logger.info(
+                            "event=create_new_job_allowed videoId={}",
+                            videoId
+                        )
                     }
                 }
             }
 
-            val thumbnailUrl = videoId?.let {
-                "https://img.youtube.com/vi/$it/hqdefault.jpg"
-            }
+            val thumbnailUrl =
+                "https://img.youtube.com/vi/$videoId/hqdefault.jpg"
 
             val initialJob = JobState.started(now, videoId).copy(
                 videoId = videoId,
