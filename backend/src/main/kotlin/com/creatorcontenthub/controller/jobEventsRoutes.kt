@@ -106,7 +106,9 @@ fun Route.jobEventsRoutes(
 
                             streamClosed = true
 
-                            return@collect
+                            throw kotlinx.coroutines.CancellationException(
+                                "SSE keepalive failed"
+                            )
                         }
 
                         application.log.debug(
@@ -139,7 +141,9 @@ fun Route.jobEventsRoutes(
 
                         streamClosed = true
 
-                        return@collect
+                        throw kotlinx.coroutines.CancellationException(
+                            "SSE stream write failed"
+                        )
                     }
 
                     // ========================================
@@ -165,7 +169,9 @@ fun Route.jobEventsRoutes(
 
                         streamClosed = true
 
-                        return@collect
+                        throw kotlinx.coroutines.CancellationException(
+                            "Terminal SSE event"
+                        )
                     }
                 }
 
