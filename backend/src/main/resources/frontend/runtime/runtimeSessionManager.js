@@ -24,6 +24,8 @@
  * - renderer lifecycle must NOT be moved here
  */
 
+var getRuntimeSession =
+    window.RuntimeState.getRuntimeSession;
 
 function createRuntimeSession(jobId) {
 

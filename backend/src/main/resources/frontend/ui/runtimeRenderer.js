@@ -246,7 +246,7 @@ function rerenderRuntimeTimeline(runtimeState) {
     );
 }
 
-function rerenderRuntimePanel(jobId) {
+function legacyRendererRuntimePanel(jobId) {
 
     if (!jobId) {
         return;
@@ -390,7 +390,6 @@ window.RuntimeRenderer = {
     rerenderRuntimeProgress,
     rerenderRuntimeStage,
     rerenderRuntimeTimeline,
-    renderTerminalRuntime,
     rerenderRuntimeVisuals,
     hydrateJobSummary
 };

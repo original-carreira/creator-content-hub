@@ -1,68 +1,86 @@
-const {
-    runtimeConnections,
-    runtimeConnectionLocks,
-    runtimeReconnectTimers,
-    runtimeSessions,
-    runtimeListeners,
-    runtimeReconnectStates,
-    runtimeStateStore,
-    runtimeStreamsByJob,
-    runtimeFallbackIntervals,
-    TERMINAL_STATUSES,
-    createCanonicalRuntimeState,
-    applyRuntimeMutation,
-    isTerminalRuntime
-} = window.RuntimeState;
+const runtimeStateApi =
+    window.RuntimeState;
 
-const {
-    fetchJobs,
-    fetchJobDetails,
-    searchJobs,
-    deleteJobs,
-    ingestYoutube
-} = window.JobsApi;
+const jobsApi =
+    window.JobsApi;
 
-const {
-    updateDownloadProgress,
-    appendRuntimeEvent,
-    rerenderRuntimeProgress,
-    rerenderRuntimeStage,
-    rerenderRuntimeTimeline,
-    renderTerminalRuntime,
-    rerenderRuntimeVisuals,
-    hydrateJobSummary
-} = window.RuntimeRenderer;
+const runtimeRenderer =
+    window.RuntimeRenderer;
 
-const {
-    hydrateRuntimeProcessingStage
-} = window.RuntimeHydration;
+const runtimeHydration =
+    window.RuntimeHydration;
 
-const {
-    shouldCleanupTerminalJob,
-    shouldAbortReconnect,
-    calculateReconnectDelay,
-    shouldSkipReconnect
-} = window.RuntimeLifecycle;
+const runtimeLifecycle =
+    window.RuntimeLifecycle;
 
-const {
-    isActiveRuntimeJob,
-    isActiveDetailsJob
-} = window.RuntimeOwnership;
+const runtimeOwnership =
+    window.RuntimeOwnership;
 
-const {
-    rerenderRuntimeJob,
-    clearReconnectTimer,
-    registerReconnectTimer,
-    scheduleReconnectTimer,
-    executeReconnect,
-    orchestrateReconnectTimer
-} = window.RuntimeCoordination;
+const runtimeCoordination =
+    window.RuntimeCoordination;
 
-const {
-    createRuntimeSession,
-    destroyRuntimeSession,
-    cleanupRuntimeSession
-} = window.RuntimeSessionManager;
+const runtimeSessionManager =
+    window.RuntimeSessionManager;
+
+function validateSubsystemBootstrap() {
+
+    const requiredSubsystems = {
+
+        RuntimeState:
+        runtimeStateApi,
+
+        RuntimeRenderer:
+        runtimeRenderer,
+
+        RuntimeLifecycle:
+        runtimeLifecycle,
+
+        RuntimeOwnership:
+        runtimeOwnership,
+
+        RuntimeCoordination:
+        runtimeCoordination,
+
+        RuntimeSessionManager:
+        runtimeSessionManager,
+
+        RuntimeHydration:
+        runtimeHydration,
+
+        JobsApi:
+        jobsApi
+    };
+
+    const missingSubsystems =
+        Object.entries(
+            requiredSubsystems
+        ).filter(
+            ([, value]) => !value
+        );
+
+    if (
+        missingSubsystems.length > 0
+    ) {
+
+        console.error(
+            "[BOOTSTRAP VALIDATION FAILED]",
+            {
+                missingSubsystems:
+                    missingSubsystems.map(
+                        ([name]) => name
+                    )
+            }
+        );
+
+        throw new Error(
+            "Frontend subsystem bootstrap failed"
+        );
+    }
+
+    console.log(
+        "[BOOTSTRAP VALIDATION SUCCESS]"
+    );
+}
 
 let activeJobId = null;
 let activeDetailsJobId = null;
@@ -210,7 +228,7 @@ function switchActiveRuntimeStream(jobId, handlers = {}) {
     return activeRuntimeStream;
 }
 
-function clearRuntimeTimeline() {
+function legacyClearRuntimeTimeline() {
 
     const timeline =
         document.getElementById(
@@ -225,9 +243,9 @@ function clearRuntimeTimeline() {
     }
 }
 
-function resetRuntimeProgressUI() {
+function legacyResetRuntimeProgressUI() {
 
-    updateDownloadProgress(0);
+    runtimeRenderer.updateDownloadProgress(0);
 }
 
 // ========================================
@@ -271,12 +289,12 @@ function rerenderRuntimePanel(jobId) {
 
     if (isTerminalRuntime(runtimeState)) {
 
-        renderTerminalRuntime(runtimeState);
+        runtimeRenderer.renderTerminalRuntime?.(runtimeState);
 
         return;
     }
 
-    rerenderRuntimeVisuals(
+    runtimeRenderer.rerenderRuntimeVisuals(
         runtimeState
     );
 
@@ -666,7 +684,7 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
                         }
 
                         const updatedRuntimeState =
-                            applyRuntimeMutation(
+                            runtimeStateApi.applyRuntimeMutation(
                                 jobId,
                                 eventName,
                                 payload,
@@ -771,7 +789,7 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
                     return;
                 }
 
-                hydrateJobSummary(job);
+                runtimeRenderer.hydrateJobSummary(job);
 
                 // ========================================
                 // HYDRATE TRANSCRIPTION STATUS
@@ -817,7 +835,7 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
                 // ========================================
 
                 if (
-                    shouldCleanupTerminalJob(job)
+                    runtimeLifecycle.shouldCleanupTerminalJob(job)
                 ) {
 
                     window.RuntimeSessionManager.cleanupRuntimeSession(jobId)
@@ -1004,11 +1022,10 @@ function resetUI() {
 
 }
 
-function resetRuntimeUI() {
+function legacyResetRuntimeUI() {
 
-    resetRuntimeProgressUI();
-
-    clearRuntimeTimeline();
+    legacyResetRuntimeProgressUI();
+    legacyClearRuntimeTimeline();
 
     const runtimeStage =
         document.getElementById(
@@ -1164,24 +1181,6 @@ function renderResults(items) {
                             return;
                         }
 
-                        if (payload.stage) {
-
-                            runtimeState.stage =
-                                payload.stage;
-                        }
-
-                        if (
-                            typeof payload.progress ===
-                            "number"
-                        ) {
-
-                            runtimeState.progress =
-                                Math.max(
-                                    runtimeState.progress || 0,
-                                    payload.progress
-                                );
-                        }
-
                         rerenderRuntimePanel(
                             payload.jobId
                         );
@@ -1327,7 +1326,7 @@ async function loadDetails(jobId) {
             return;
         }
 
-        renderDetails(data.data);
+        legacyRenderDetailsShell(data.data);
 
     } catch (err) {
         console.error("Erro ao carregar detalhes:", err);
@@ -1335,7 +1334,7 @@ async function loadDetails(jobId) {
     }
 }
 
-function renderDetails(job) {
+function legacyRenderDetailsShell(job) {
 
     const detailsEl = document.getElementById("details");
 
@@ -1520,7 +1519,7 @@ function renderDetails(job) {
             }
         );
 
-        resetRuntimeUI();
+        legacyResetRuntimeUI();
     }
 }
 
@@ -1615,7 +1614,7 @@ async function ingest() {
                     !document.getElementById("runtime-stage")
                 ) {
 
-                    renderDetails({
+                    legacyRenderDetailsShell({
                         id: payload.jobId,
                         status: payload.status,
                         stage: payload.stage,
@@ -1630,27 +1629,6 @@ async function ingest() {
                 // ========================================
 
                 if (runtimeState) {
-
-                    // stage
-                    if (payload.stage) {
-
-                        runtimeState.stage =
-                            payload.stage;
-                    }
-
-                    // progress
-                    if (
-                        typeof payload.progress ===
-                        "number"
-                    ) {
-
-                        // evita regressão visual
-                        runtimeState.progress =
-                            Math.max(
-                                runtimeState.progress || 0,
-                                payload.progress
-                            );
-                    }
 
                     // limite memória
                     if (
@@ -1873,7 +1851,7 @@ function updateIngestUI(job, elapsedSec = null) {
 
         if (!runtimePanelActive) {
 
-            renderDetails(job);
+            legacyRenderDetailsShell(job);
 
         } else {
 
@@ -2000,7 +1978,7 @@ async function loadJobs() {
             url += `&order=${sort}`;
         }
 
-        const data = await fetchJobs({
+        const data = await jobsApi.fetchJobs({
             status,
             sort,
             limit: 20
@@ -2122,6 +2100,8 @@ window.addEventListener(
     "load",
     async () => {
 
+        validateSubsystemBootstrap();
+
         const savedJobId =
             localStorage.getItem(
                 "activeRuntimeJobId"
@@ -2163,7 +2143,7 @@ window.addEventListener(
 
             activeJobId = savedJobId;
 
-            renderDetails(job);
+            legacyRenderDetailsShell(job);
 
             if (
                 runtimeConnections.has(savedJobId)
@@ -2224,31 +2204,6 @@ window.addEventListener(
                         // ========================================
                         // STORE-FIRST UPDATE
                         // ========================================
-
-                        if (payload.stage) {
-
-                            runtimeState.stage =
-                                payload.stage;
-                        }
-
-                        if (
-                            typeof payload.progress ===
-                            "number"
-                        ) {
-
-                            runtimeState.progress =
-                                Math.max(
-                                    runtimeState.progress || 0,
-                                    payload.progress
-                                );
-                        }
-
-                        if (
-                            runtimeState.timeline.length > 50
-                        ) {
-
-                            runtimeState.timeline.shift();
-                        }
 
                         console.log(
                             "[RECOVERY STORE UPDATED]",
