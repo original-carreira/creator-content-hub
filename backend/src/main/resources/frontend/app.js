@@ -2138,146 +2138,167 @@ function syncSelectAll() {
     selectAll.checked = all.length > 0 && all.length === checked.length;
 }
 
+function restoreRecoveredRuntimeSession(
+    savedJobId,
+    job
+) {
+
+    activeJobId = savedJobId;
+
+    renderLegacyDetailsShellBridge(job);
+}
+
+function restoreRecoveredRuntimeStream(
+    savedJobId
+) {
+
+    if (
+        runtimeConnections.has(savedJobId)
+    ) {
+
+        console.log(
+            "[RUNTIME RECOVERY] connection already active"
+        );
+
+        return;
+    }
+
+    switchActiveRuntimeStream(
+        savedJobId,
+        {
+            onEvent(eventName, payload) {
+
+                const runtimeState =
+                    runtimeStateStore.get(
+                        payload.jobId
+                    );
+
+                if (
+                    runtimeState &&
+                    isTerminalRuntime(runtimeState)
+                ) {
+
+                    console.log(
+                        "[SSE TERMINAL IGNORE]",
+                        payload.jobId,
+                        runtimeState.status
+                    );
+
+                    return;
+                }
+
+                if (!payload || payload.jobId !== activeJobId ) {
+
+                    console.log(
+                        "[RECOVERY SSE IGNORE] inactive payload",
+                        payload?.jobId,
+                        activeJobId
+                    );
+
+                    return;
+                }
+
+                if (!runtimeState) {
+
+                    console.warn(
+                        "[RECOVERY SSE] missing runtime state",
+                        payload.jobId
+                    );
+
+                    return;
+                }
+
+                console.log(
+                    "[RECOVERY STORE UPDATED]",
+                    {
+                        jobId: payload.jobId,
+                        event: eventName,
+                        stage: runtimeState.stage,
+                        progress:
+                        runtimeState.progress,
+                        timeline:
+                        runtimeState.timeline.length
+                    }
+                );
+
+                orchestrateRuntimePanelRerender(
+                    payload.jobId
+                );
+            }
+        }
+    );
+}
+
+async function bootstrapRuntimeRecovery() {
+
+    const savedJobId =
+        localStorage.getItem(
+            "activeRuntimeJobId"
+        );
+
+    if (!savedJobId) {
+        return;
+    }
+
+    try {
+
+        const res =
+            await fetch(`/jobs/${savedJobId}`);
+
+        if (!res.ok) {
+            return;
+        }
+
+        const data = await res.json();
+
+        if (!data?.success || !data?.data) {
+            return;
+        }
+
+        const job = data.data;
+
+        // job finalizado
+        if (
+            job.status === "DONE" ||
+            job.status === "FAILED"
+        ) {
+
+            localStorage.removeItem(
+                "activeRuntimeJobId"
+            );
+
+            return;
+        }
+
+        restoreRecoveredRuntimeSession(
+            savedJobId,
+            job
+        );
+
+        restoreRecoveredRuntimeStream(
+            savedJobId
+        );
+
+        console.log(
+            "[RUNTIME RECOVERY] restored:",
+            savedJobId
+        );
+
+    } catch (err) {
+
+        console.error(
+            "[RUNTIME RECOVERY ERROR]",
+            err
+        );
+    }
+}
+
 window.addEventListener(
     "load",
     async () => {
 
         validateSubsystemBootstrap();
 
-        const savedJobId =
-            localStorage.getItem(
-                "activeRuntimeJobId"
-            );
-
-        if (!savedJobId) {
-            return;
-        }
-
-        try {
-
-            const res =
-                await fetch(`/jobs/${savedJobId}`);
-
-            if (!res.ok) {
-                return;
-            }
-
-            const data = await res.json();
-
-            if (!data?.success || !data?.data) {
-                return;
-            }
-
-            const job = data.data;
-
-            // job finalizado
-            if (
-                job.status === "DONE" ||
-                job.status === "FAILED"
-            ) {
-
-                localStorage.removeItem(
-                    "activeRuntimeJobId"
-                );
-
-                return;
-            }
-
-            activeJobId = savedJobId;
-
-            renderLegacyDetailsShellBridge(job);
-
-            if (
-                runtimeConnections.has(savedJobId)
-            ) {
-
-                console.log(
-                    "[RUNTIME RECOVERY] connection already active"
-                );
-
-                return;
-            }
-
-            switchActiveRuntimeStream(
-                savedJobId,
-                {
-                    onEvent(eventName, payload) {
-
-                        const runtimeState =
-                            runtimeStateStore.get(
-                                payload.jobId
-                            );
-
-                        if (
-                            runtimeState &&
-                            isTerminalRuntime(runtimeState)
-                        ) {
-
-                            console.log(
-                                "[SSE TERMINAL IGNORE]",
-                                payload.jobId,
-                                runtimeState.status
-                            );
-
-                            return;
-                        }
-
-                        if (!payload || payload.jobId !== activeJobId ) {
-
-                            console.log(
-                                "[RECOVERY SSE IGNORE] inactive payload",
-                                payload?.jobId,
-                                activeJobId
-                            );
-
-                            return;
-                        }
-
-                        if (!runtimeState) {
-
-                            console.warn(
-                                "[RECOVERY SSE] missing runtime state",
-                                payload.jobId
-                            );
-
-                            return;
-                        }
-
-                        // ========================================
-                        // STORE-FIRST UPDATE
-                        // ========================================
-
-                        console.log(
-                            "[RECOVERY STORE UPDATED]",
-                            {
-                                jobId: payload.jobId,
-                                event: eventName,
-                                stage: runtimeState.stage,
-                                progress:
-                                runtimeState.progress,
-                                timeline:
-                                runtimeState.timeline.length
-                            }
-                        );
-
-                        orchestrateRuntimePanelRerender(
-                            payload.jobId
-                        );
-                    }
-                }
-            );
-
-            console.log(
-                "[RUNTIME RECOVERY] restored:",
-                savedJobId
-            );
-
-        } catch (err) {
-
-            console.error(
-                "[RUNTIME RECOVERY ERROR]",
-                err
-            );
-        }
+        await bootstrapRuntimeRecovery();
     }
 );
