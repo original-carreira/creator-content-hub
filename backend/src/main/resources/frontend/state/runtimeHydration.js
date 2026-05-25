@@ -1,4 +1,4 @@
-function hydrateRuntimeProcessingStage(runtimeState, job){
+function hydrateProcessingStageState(runtimeState, job){
     if (
         job.transcription &&
         !job.summary
@@ -17,5 +17,5 @@ function hydrateRuntimeProcessingStage(runtimeState, job){
 }
 
 window.RuntimeHydration = {
-    hydrateRuntimeProcessingStage
+    hydrateProcessingStageState
 };

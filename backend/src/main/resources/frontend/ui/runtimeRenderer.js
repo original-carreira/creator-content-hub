@@ -246,7 +246,7 @@ function rerenderRuntimeTimeline(runtimeState) {
     );
 }
 
-function legacyRendererRuntimePanel(jobId) {
+function legacyRuntimeRendererBridge(jobId) {
 
     if (!jobId) {
         return;
@@ -283,43 +283,7 @@ function legacyRendererRuntimePanel(jobId) {
 
     if (isTerminalRuntime(runtimeState)) {
 
-        console.log(
-            "[TERMINAL RUNTIME]",
-            runtimeState.jobId,
-            runtimeState.status
-        );
-
-        // preserva último stage terminal
-        const runtimeStage =
-            document.getElementById(
-                "runtime-stage"
-            );
-
-        if (
-            runtimeState.stage &&
-            runtimeStage
-        ) {
-
-            runtimeStage.innerText =
-                getRuntimeStageLabel(
-                    runtimeState.stage,
-                    runtimeState.status
-                );
-        }
-
-        // preserva progress final
-        if (
-            typeof runtimeState.progress ===
-            "number"
-        ) {
-
-            updateDownloadProgress(
-                runtimeState.progress
-            );
-        }
-
-        // renderiza timeline persistida
-        rerenderRuntimeTimeline(
+        renderTerminalRuntime(
             runtimeState
         );
 
@@ -367,6 +331,32 @@ function rerenderRuntimeVisuals(runtimeState) {
     );
 }
 
+function renderTerminalRuntime(runtimeState) {
+    if (!runtimeState) {
+        return;
+    }
+
+    console.log(
+        "[TERMINAL RUNTIME RENDER]",
+        {
+            jobId: runtimeState.jobId,
+            status: runtimeState.status
+        }
+    );
+
+    rerenderRuntimeStage(
+        runtimeState
+    );
+
+    rerenderRuntimeProgress(
+        runtimeState
+    );
+
+    rerenderRuntimeTimeline(
+        runtimeState
+    );
+}
+
 function hydrateJobSummary(job){
     const summaryEl =
         document.getElementById(
@@ -391,5 +381,6 @@ window.RuntimeRenderer = {
     rerenderRuntimeStage,
     rerenderRuntimeTimeline,
     rerenderRuntimeVisuals,
+    renderTerminalRuntime,
     hydrateJobSummary
 };

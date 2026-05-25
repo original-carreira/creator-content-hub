@@ -189,7 +189,7 @@ function switchActiveRuntimeStream(jobId, handlers = {}) {
 
         activeJobId = jobId;
 
-        rerenderRuntimePanel(jobId);
+        orchestrateRuntimePanelRerender(jobId);
 
         return;
     }
@@ -228,7 +228,7 @@ function switchActiveRuntimeStream(jobId, handlers = {}) {
     return activeRuntimeStream;
 }
 
-function legacyClearRuntimeTimeline() {
+function clearLegacyRuntimeTimelineVisuals() {
 
     const timeline =
         document.getElementById(
@@ -243,7 +243,7 @@ function legacyClearRuntimeTimeline() {
     }
 }
 
-function legacyResetRuntimeProgressUI() {
+function resetLegacyRuntimeProgressVisuals() {
 
     runtimeRenderer.updateDownloadProgress(0);
 }
@@ -252,7 +252,7 @@ function legacyResetRuntimeProgressUI() {
 // STATE-DRIVEN RENDERERS
 // ========================================
 
-function rerenderRuntimePanel(jobId) {
+function orchestrateRuntimePanelRerender(jobId) {
 
     if (!jobId) {
         return;
@@ -312,9 +312,7 @@ function rerenderRuntimePanel(jobId) {
     );
 }
 
-function restoreRuntimeState(
-    runtimeState
-) {
+function restoreRuntimeVisualState(runtimeState) {
 
     if (!runtimeState) {
         return;
@@ -333,7 +331,7 @@ function restoreRuntimeState(
         }
     );
 
-    rerenderRuntimePanel(
+    orchestrateRuntimePanelRerender(
         runtimeState.jobId
     );
 }
@@ -814,7 +812,7 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
                         return;
                     }
 
-                    hydrateRuntimeProcessingStage(
+                    runtimeHydration.hydrateProcessingStageState(
                         runtimeState,
                         job
                     );
@@ -827,7 +825,7 @@ function connectJobRuntimeStream(jobId, handlers = {}) {
                         }
                     );
 
-                    rerenderRuntimeJob(job.id);
+                    orchestrateRuntimePanelRerender(job.id);
                 }
 
                 // ========================================
@@ -1022,10 +1020,10 @@ function resetUI() {
 
 }
 
-function legacyResetRuntimeUI() {
+function resetLegacyRuntimeVisualState() {
 
-    legacyResetRuntimeProgressUI();
-    legacyClearRuntimeTimeline();
+    resetLegacyRuntimeProgressVisuals();
+    clearLegacyRuntimeTimelineVisuals();
 
     const runtimeStage =
         document.getElementById(
@@ -1181,7 +1179,7 @@ function renderResults(items) {
                             return;
                         }
 
-                        rerenderRuntimePanel(
+                        orchestrateRuntimePanelRerender(
                             payload.jobId
                         );
                     }
@@ -1326,7 +1324,7 @@ async function loadDetails(jobId) {
             return;
         }
 
-        legacyRenderDetailsShell(data.data);
+        renderLegacyDetailsShellBridge(data.data);
 
     } catch (err) {
         console.error("Erro ao carregar detalhes:", err);
@@ -1334,60 +1332,10 @@ async function loadDetails(jobId) {
     }
 }
 
-function legacyRenderDetailsShell(job) {
-
-    const detailsEl = document.getElementById("details");
-
-    const createdAt = new Date(job.createdAt).toLocaleString();
-
-    let processingTime = "-";
-
-    if (job.startedAt && job.finishedAt) {
-        const duration = (job.finishedAt - job.startedAt) / 1000 / 60;
-        processingTime = duration.toFixed(2) + " min";
-    }
-
-    const runtimeState =
-        runtimeStateStore.get(job.id);
-
-    const existingRuntimePanel =
-        document.getElementById(
-            "runtime-stage"
-        );
-
-    const isSameActiveJob =
-        activeDetailsJobId === job.id;
-
-    if (
-        existingRuntimePanel &&
-        isSameActiveJob
-    ) {
-
-        console.log(
-            "[RENDER DETAILS] destructive rerender skipped",
-            {
-                jobId: job.id
-            }
-        );
-
-        const summaryEl =
-            document.getElementById(
-                "job-summary"
-            );
-
-        if (summaryEl) {
-
-            summaryEl.innerText =
-                job.summary || "(vazio)";
-        }
-
-        rerenderRuntimePanel(job.id);
-
-        return;
-    }
-
-    activeDetailsJobId = job.id;
-
+function mountLegacyRuntimeDetailsShell(
+    detailsEl,
+    job
+) {
     detailsEl.innerHTML = `
         <div class="detail-block">
             <strong>Status:</strong> ${job.status}
@@ -1482,6 +1430,66 @@ function legacyRenderDetailsShell(job) {
             ></div>
         </div>
     `;
+}
+
+function renderLegacyDetailsShellBridge(job) {
+
+    const detailsEl = document.getElementById("details");
+
+    const createdAt = new Date(job.createdAt).toLocaleString();
+
+    let processingTime = "-";
+
+    if (job.startedAt && job.finishedAt) {
+        const duration = (job.finishedAt - job.startedAt) / 1000 / 60;
+        processingTime = duration.toFixed(2) + " min";
+    }
+
+    const runtimeState =
+        runtimeStateStore.get(job.id);
+
+    const existingRuntimePanel =
+        document.getElementById(
+            "runtime-stage"
+        );
+
+    const isSameActiveJob =
+        activeDetailsJobId === job.id;
+
+    if (
+        existingRuntimePanel &&
+        isSameActiveJob
+    ) {
+
+        console.log(
+            "[RENDER DETAILS] destructive rerender skipped",
+            {
+                jobId: job.id
+            }
+        );
+
+        const summaryEl =
+            document.getElementById(
+                "job-summary"
+            );
+
+        if (summaryEl) {
+
+            summaryEl.innerText =
+                job.summary || "(vazio)";
+        }
+
+        orchestrateRuntimePanelRerender(job.id);
+
+        return;
+    }
+
+    activeDetailsJobId = job.id;
+
+    mountLegacyRuntimeDetailsShell(
+        details,
+        job
+    );
 
     // 👇 conteúdo seguro (SEM warning)
     document.getElementById("job-summary").innerText =
@@ -1508,7 +1516,7 @@ function legacyRenderDetailsShell(job) {
             }
         );
 
-        restoreRuntimeState(runtimeState);
+        restoreRuntimeVisualState(runtimeState);
 
     } else {
 
@@ -1519,7 +1527,7 @@ function legacyRenderDetailsShell(job) {
             }
         );
 
-        legacyResetRuntimeUI();
+        resetLegacyRuntimeVisualState();
     }
 }
 
@@ -1614,7 +1622,7 @@ async function ingest() {
                     !document.getElementById("runtime-stage")
                 ) {
 
-                    legacyRenderDetailsShell({
+                    renderLegacyDetailsShellBridge({
                         id: payload.jobId,
                         status: payload.status,
                         stage: payload.stage,
@@ -1651,7 +1659,7 @@ async function ingest() {
                         }
                     );
 
-                    rerenderRuntimePanel(
+                    orchestrateRuntimePanelRerender(
                         payload.jobId
                     );
                 }
@@ -1786,6 +1794,40 @@ function pollStatus(jobId) {
     executePoll();
 }
 
+function applyTerminalRuntimeState(
+    runtimeState,
+    job
+) {
+
+    runtimeState.status =
+        job.status;
+
+    runtimeState.isTerminal = true;
+
+    applyRuntimeProgressState(
+        runtimeState,
+        100
+    );
+}
+
+function applyRuntimeProgressState(
+    runtimeState,
+    progress
+) {
+
+    runtimeState.progress =
+        progress;
+}
+
+function applyRuntimeStageState(
+    runtimeState,
+    stage
+) {
+
+    runtimeState.stage =
+        stage;
+}
+
 function updateIngestUI(job, elapsedSec = null) {
 
     if (!job) {
@@ -1851,7 +1893,7 @@ function updateIngestUI(job, elapsedSec = null) {
 
         if (!runtimePanelActive) {
 
-            legacyRenderDetailsShell(job);
+            renderLegacyDetailsShellBridge(job);
 
         } else {
 
@@ -1886,25 +1928,25 @@ function updateIngestUI(job, elapsedSec = null) {
                         job.id
                     );
 
-                    rerenderRuntimePanel(job.id);
+                    orchestrateRuntimePanelRerender(job.id);
 
                     return;
                 }
 
                 if (isTerminalStatus) {
 
-                    runtimeState.status =
-                        job.status;
-
-                    runtimeState.isTerminal = true;
-
-                    runtimeState.progress = 100;
+                    applyTerminalRuntimeState(
+                        runtimeState,
+                        job
+                    );
 
                 } else {
 
-                    runtimeState.stage =
+                    applyRuntimeStageState(
+                        runtimeState,
                         runtimeState.stage ||
-                        "CREATED";
+                        "CREATED"
+                    );
                 }
 
                 console.log(
@@ -1916,7 +1958,7 @@ function updateIngestUI(job, elapsedSec = null) {
                     }
                 );
 
-                rerenderRuntimePanel(job.id);
+                orchestrateRuntimePanelRerender(job.id);
             }
         }
 
@@ -2143,7 +2185,7 @@ window.addEventListener(
 
             activeJobId = savedJobId;
 
-            legacyRenderDetailsShell(job);
+            renderLegacyDetailsShellBridge(job);
 
             if (
                 runtimeConnections.has(savedJobId)
@@ -2218,7 +2260,7 @@ window.addEventListener(
                             }
                         );
 
-                        rerenderRuntimePanel(
+                        orchestrateRuntimePanelRerender(
                             payload.jobId
                         );
                     }
