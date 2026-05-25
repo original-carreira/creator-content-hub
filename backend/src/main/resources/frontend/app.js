@@ -1334,8 +1334,11 @@ async function loadDetails(jobId) {
 
 function mountLegacyRuntimeDetailsShell(
     detailsEl,
-    job
+    job,
+    createdAt,
+    processingTime
 ) {
+
     detailsEl.innerHTML = `
         <div class="detail-block">
             <strong>Status:</strong> ${job.status}
@@ -1487,8 +1490,10 @@ function renderLegacyDetailsShellBridge(job) {
     activeDetailsJobId = job.id;
 
     mountLegacyRuntimeDetailsShell(
-        details,
-        job
+        detailsEl,
+        job,
+        createdAt,
+        processingTime
     );
 
     // 👇 conteúdo seguro (SEM warning)
