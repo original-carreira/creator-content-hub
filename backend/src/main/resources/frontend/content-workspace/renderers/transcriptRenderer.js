@@ -1,4 +1,4 @@
-function transcriptRenderer() {
+function renderTranscriptWorkspace() {
 
     return `
         <div class="detail-block">
@@ -129,7 +129,7 @@ function renderTranscriptContent(
 
 window.TranscriptRenderer = {
 
-    renderTranscriptWorkspace: transcriptRenderer,
+    renderTranscriptWorkspace,
 
     renderTranscriptContent
 };
