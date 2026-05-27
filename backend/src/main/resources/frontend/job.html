@@ -13,7 +13,21 @@
     <div id="jobContent">Carregando...</div>
 </div>
 
+<script src="content-workspace/state/workspaceState.js"></script>
+
+<script src="content-workspace/renderers/transcriptRenderer.js"></script>
+
+<script src="content-workspace/renderers/workspaceHeaderRenderer.js"></script>
+
+<script src="content-workspace/renderers/workspaceToolbarRenderer.js"></script>
+
+<script src="content-workspace/search/transcriptSearchController.js"></script>
+
 <script>
+
+    const workspaceStateApi =
+        window.ContentWorkspaceState;
+
     function getJobId() {
         const params = new URLSearchParams(window.location.search);
         return params.get("jobId");
@@ -35,194 +49,15 @@
             renderJob(job);
 
         } catch (err) {
-            document.getElementById("jobContent").innerText = "Erro ao carregar conteúdo";
+
+            console.error(
+                "[CONTENT WORKSPACE LOAD ERROR]",
+                err
+            );
+
+            document.getElementById("jobContent").innerText =
+                "Erro ao carregar conteúdo";
         }
-    }
-
-    function renderJobHeader(job) {
-
-        return `
-        <div
-            style="
-                display:flex;
-                gap:20px;
-                align-items:flex-start;
-                margin-bottom:15px;
-            "
-        >
-
-            <!-- THUMBNAIL -->
-            <div>
-                <img
-                    src="${job.thumbnailUrl || ''}"
-                    alt="thumb"
-                    style="
-                        width:240px;
-                        height:135px;
-                        object-fit:cover;
-                        border-radius:8px;
-                        background:#eee;
-                    "
-                    onerror="this.style.display='none'"
-                />
-            </div>
-
-            <!-- INFO -->
-            <div>
-
-                <div class="detail-block">
-                    <strong>Status:</strong> ${job.status}
-                </div>
-
-                <div class="detail-block">
-                    <strong>Título:</strong>
-                    ${job.title || "(sem título)"}
-                </div>
-
-            </div>
-        </div>
-    `;
-    }
-
-    function renderWorkspaceToolbar() {
-
-        return `
-        <div
-            style="
-                display:flex;
-                justify-content:space-between;
-                align-items:center;
-                gap:12px;
-                margin-bottom:18px;
-                padding:14px;
-                border:1px solid #ddd;
-                border-radius:10px;
-                background:#fafafa;
-                flex-wrap:wrap;
-            "
-        >
-
-            <!-- SEARCH -->
-            <div
-                style="
-                    display:flex;
-                    align-items:center;
-                    gap:8px;
-                    flex:1;
-                    min-width:260px;
-                "
-            >
-                <input
-                    id="transcriptSearchInput"
-                    type="text"
-                    placeholder="Buscar na transcrição..."
-                    style="
-                        width:100%;
-                        padding:10px;
-                        border:1px solid #ccc;
-                        border-radius:8px;
-                    "
-                />
-            </div>
-
-            <!-- ACTIONS -->
-            <div
-                style="
-                    display:flex;
-                    align-items:center;
-                    gap:10px;
-                    flex-wrap:wrap;
-                "
-            >
-                <button
-                    type="button"
-                    style="
-                        padding:10px 14px;
-                        border:none;
-                        border-radius:8px;
-                        cursor:pointer;
-                    "
-                >
-                    Export TXT
-                </button>
-
-                <button
-                    type="button"
-                    style="
-                        padding:10px 14px;
-                        border:none;
-                        border-radius:8px;
-                        cursor:pointer;
-                    "
-                >
-                    Export DOCX
-                </button>
-
-                <button
-                    type="button"
-                    style="
-                        padding:10px 14px;
-                        border:none;
-                        border-radius:8px;
-                        cursor:pointer;
-                    "
-                >
-                    Media
-                </button>
-            </div>
-        </div>
-    `;
-    }
-
-    function renderTranscriptWorkspace() {
-
-        return `
-        <div class="detail-block">
-
-            <div
-                style="
-                    display:flex;
-                    justify-content:space-between;
-                    align-items:center;
-                    margin-bottom:10px;
-                "
-            >
-                <strong>Transcrição Completa</strong>
-
-                <span
-                    style="
-                        font-size:12px;
-                        color:#666;
-                    "
-                >
-                    Workspace de Conteúdo
-                </span>
-            </div>
-
-            <div
-                id="transcriptionContainer"
-                style="
-                    border:1px solid #ddd;
-                    border-radius:10px;
-                    background:#fafafa;
-                    padding:16px;
-                    max-height:520px;
-                    overflow-y:auto;
-                "
-            >
-                <div
-                    id="transcription"
-                    style="
-                        white-space:pre-wrap;
-                        word-break:break-word;
-                        line-height:1.6;
-                        font-size:14px;
-                        font-family:inherit;
-                    "
-                ></div>
-            </div>
-        </div>
-    `;
     }
 
     function renderSummaryWorkspace() {
@@ -274,124 +109,38 @@
     `;
     }
 
-    let originalTranscriptText = "";
-
-    function escapeHtml(text) {
-
-        return text
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;");
-    }
-
-    function renderTranscriptContent(
-        text,
-        searchTerm = ""
-    ) {
-
-        const transcriptionEl =
-            document.getElementById("transcription");
-
-        if (!transcriptionEl) {
-            return;
-        }
-
-        // modo normal
-        if (!searchTerm) {
-
-            transcriptionEl.innerText =
-                text || "(vazio)";
-
-            return;
-        }
-
-        const escapedText =
-            escapeHtml(text || "(vazio)");
-
-        const escapedSearch =
-            escapeHtml(searchTerm);
-
-        const regex =
-            new RegExp(
-                    `(${escapedSearch})`,
-                "gi"
-            );
-
-        const highlighted =
-            escapedText.replace(
-                regex,
-                `
-            <mark
-                style="
-                    background:#ffeb3b;
-                    color:inherit;
-                "
-            >
-                $1
-            </mark>
-            `
-            );
-
-        transcriptionEl.innerHTML =
-            highlighted;
-
-        const firstMatch =
-            transcriptionEl.querySelector("mark");
-
-        if (firstMatch) {
-
-            firstMatch.scrollIntoView({
-                behavior: "smooth",
-                block: "center"
-            });
-        }
-    }
-
-    function bindTranscriptSearch() {
-
-        const input =
-            document.getElementById(
-                "transcriptSearchInput"
-            );
-
-        if (!input) {
-            return;
-        }
-
-        input.addEventListener(
-            "input",
-            (event) => {
-
-                const value =
-                    event.target.value.trim();
-
-                renderTranscriptContent(
-                    originalTranscriptText,
-                    value
-                );
-            }
-        );
-    }
-
     function renderJob(job) {
+
+        workspaceStateApi.setWorkspaceJobId(
+            job.id
+        );
+
         const container = document.getElementById("jobContent");
 
         container.innerHTML = `
-            ${renderJobHeader(job)}
+            ${window.WorkspaceHeaderRenderer.renderJobHeader(job)}
 
-            ${renderWorkspaceToolbar()}
+            ${window.WorkspaceToolbarRenderer.renderWorkspaceToolbar()}
 
-            ${renderTranscriptWorkspace()}
+            ${window.TranscriptRenderer.renderTranscriptWorkspace()}
 
             ${renderSummaryWorkspace()}
         `;
 
-        originalTranscriptText =
-            job.transcription || "(vazio)";
+        workspaceStateApi.setOriginalTranscriptText(
+            job.transcription || "(vazio)"
+        );
 
-        renderTranscriptContent(originalTranscriptText);
+        window.TranscriptRenderer
+            .renderTranscriptContent(
+                workspaceStateApi.workspaceState
+                    .originalTranscriptText
+            );
 
-        bindTranscriptSearch();
+        window.TranscriptSearchController
+            .bindTranscriptSearch(
+                workspaceStateApi
+            );
 
         document.getElementById("summary").innerText =
             job.summary || "(vazio)";
