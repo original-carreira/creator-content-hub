@@ -37,6 +37,55 @@ function renderWorkspaceToolbar() {
                     "
                 />
             </div>
+            
+            <div
+                style="
+                    display:flex;
+                    align-items:center;
+                    gap:6px;
+                "
+            >
+
+                <button
+                    id="previousOccurrenceButton"
+                    type="button"
+                    style="
+                        padding:8px 10px;
+                        border:1px solid #ccc;
+                        border-radius:8px;
+                        cursor:pointer;
+                        background:white;
+                    "
+                >
+                    ↑
+                </button>
+
+                <button
+                    id="nextOccurrenceButton"
+                    type="button"
+                    style="
+                        padding:8px 10px;
+                        border:1px solid #ccc;
+                        border-radius:8px;
+                        cursor:pointer;
+                        background:white;
+                    "
+                >
+                    ↓
+                </button>
+
+                <span
+                    id="searchOccurrenceCounter"
+                    style="
+                        font-size:13px;
+                        color:#666;
+                        min-width:70px;
+                    "
+                >
+                    0 de 0
+                </span>
+
+            </div>
 
             <div
                 style="
