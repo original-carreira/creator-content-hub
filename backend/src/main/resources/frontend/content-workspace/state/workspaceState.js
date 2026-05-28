@@ -8,8 +8,13 @@ const workspaceState = {
 
         searchTerm: "",
 
-        selectedOccurrence: 0
+        selectedOccurrence: 0,
+
+        totalOccurrences: 0,
+
+        activeOccurrenceIndex: 0
     }
+
 };
 
 function setWorkspaceJobId(jobId) {
@@ -42,6 +47,12 @@ function resetTranscriptSearchState() {
         "";
 
     workspaceState.transcriptSearch.selectedOccurrence =
+        0;
+
+    workspaceState.transcriptSearch.totalOccurrences =
+        0;
+
+    workspaceState.transcriptSearch.activeOccurrenceIndex =
         0;
 }
 

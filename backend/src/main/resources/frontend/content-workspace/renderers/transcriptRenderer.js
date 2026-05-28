@@ -59,7 +59,8 @@ function escapeHtml(text) {
 
 function renderTranscriptContent(
     text,
-    searchTerm = ""
+    searchTerm = "",
+    activeOccurrenceIndex = -1
 ) {
 
     const transcriptionEl =
@@ -95,36 +96,43 @@ function renderTranscriptContent(
             "gi"
         );
 
+    let occurrenceIndex = 0;
+
     const highlighted =
         escapedText.replace(
             regex,
-            `
+            (match) => {
+
+                const currentIndex =
+                    occurrenceIndex++;
+
+                const isActive =
+                    currentIndex === activeOccurrenceIndex;
+
+                const backgroundColor =
+                    isActive
+                        ? "#ff9800"
+                        : "#ffeb3b";
+
+                return `
             <mark
+                data-occurrence-index="${currentIndex}"
                 style="
-                    background:#ffeb3b;
+                    background:${backgroundColor};
                     color:inherit;
+                    padding:0 2px;
+                    border-radius:2px;
                 "
             >
-                $1
+                ${match}
             </mark>
-            `
+            `;
+            }
         );
 
     transcriptionEl.innerHTML =
         highlighted;
 
-    const firstMatch =
-        transcriptionEl.querySelector(
-            "mark"
-        );
-
-    if (firstMatch) {
-
-        firstMatch.scrollIntoView({
-            behavior:"smooth",
-            block:"center"
-        });
-    }
 }
 
 window.TranscriptRenderer = {
