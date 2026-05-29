@@ -96,6 +96,7 @@ function renderWorkspaceToolbar() {
                 "
             >
                 <button
+                    id="exportTxtButton"
                     type="button"
                     style="
                         padding:10px 14px;
@@ -108,6 +109,7 @@ function renderWorkspaceToolbar() {
                 </button>
 
                 <button
+                    id="exportDocxButton"
                     type="button"
                     style="
                         padding:10px 14px;
@@ -120,6 +122,7 @@ function renderWorkspaceToolbar() {
                 </button>
 
                 <button
+                    id="workspaceMediaButton"
                     type="button"
                     style="
                         padding:10px 14px;

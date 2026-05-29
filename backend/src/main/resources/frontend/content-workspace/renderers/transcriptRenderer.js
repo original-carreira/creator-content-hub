@@ -37,9 +37,10 @@ function renderTranscriptWorkspace() {
                 <div
                     id="transcription"
                     style="
-                        white-space:pre-wrap;
-                        word-break:break-word;
-                        line-height:1.6;
+                        white-space:normal;
+                        overflow-wrap:anywhere;
+                        word-break:normal;
+                        line-height:1.7;
                         font-size:14px;
                         font-family:inherit;
                     "
@@ -109,24 +110,19 @@ function renderTranscriptContent(
                 const isActive =
                     currentIndex === activeOccurrenceIndex;
 
-                const backgroundColor =
+                const className =
                     isActive
-                        ? "#ff9800"
-                        : "#ffeb3b";
+                        ? "transcript-highlight-active"
+                        : "transcript-highlight";
 
                 return `
-            <mark
-                data-occurrence-index="${currentIndex}"
-                style="
-                    background:${backgroundColor};
-                    color:inherit;
-                    padding:0 2px;
-                    border-radius:2px;
-                "
-            >
-                ${match}
-            </mark>
-            `;
+                    <mark
+                        class="${className}"
+                        data-occurrence-index="${currentIndex}"
+                    >
+                        ${match}
+                    </mark>
+                `;
             }
         );
 
