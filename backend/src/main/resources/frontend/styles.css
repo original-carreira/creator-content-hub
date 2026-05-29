@@ -259,3 +259,27 @@ label.action-btn {
     align-self: stretch; /* ocupa largura dos botões acima */
 }
 
+.transcript-highlight,
+.transcript-highlight-active {
+    display: inline;
+    color: inherit;
+    padding: 0;
+    margin: 0;
+    border-radius: 0;
+    line-height: inherit;
+    white-space: inherit;
+    word-break: inherit;
+    overflow-wrap: inherit;
+    vertical-align: baseline;
+}
+
+.transcript-highlight {
+    background: #ffeb3b;
+}
+
+.transcript-highlight-active {
+    background: #ff9800;
+    outline: 1px solid #e65100;
+    box-shadow: 0 0 0 1px rgba(230, 81, 0, 0.15);
+}
+

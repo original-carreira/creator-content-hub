@@ -101,12 +101,39 @@ fun Route.exportRoutes(
         ${summaryFile.readText(Charsets.UTF_8)}
     """.trimIndent()
 
-        val filename = "job_$jobId.txt"
+        val exportBaseFilename =
+            job.title
+                ?.trim()
+                ?.replace(Regex("[\\\\/:*?\"<>|]"), "")
+                ?.replace(Regex("[“”‘’]"), "")
+                ?.replace(Regex("[\\p{So}\\p{Cn}]"), "")
+                ?.replace(Regex("(^|\\s)_([^_]+)_(?=\\s|$)"), "$1$2")
+                ?.replace(Regex("^[_\\-.\\s]+"), "")
+                ?.replace(Regex("[_\\-.\\s]+$"), "")
+                ?.replace(Regex("\\s+"), " ")
+                ?.ifBlank { null }
+                ?: "job_$jobId"
+
+        val filename =
+            "${exportBaseFilename}.txt"
+
+        logger.info(
+            "event=export_filename_debug rawTitle='{}' exportBaseFilename='{}'",
+            job.title,
+            exportBaseFilename
+        )
 
         call.response.headers.append(
             HttpHeaders.ContentDisposition,
             ContentDisposition.Attachment
-                .withParameter(ContentDisposition.Parameters.FileName, filename)
+                .withParameter(
+                    ContentDisposition.Parameters.FileName,
+                    filename
+                )
+                .withParameter(
+                    "filename*",
+                    "UTF-8''$filename"
+                )
                 .toString()
         )
 
@@ -133,6 +160,19 @@ fun Route.exportRoutes(
             call.respondError(HttpStatusCode.NotFound, "Job not found")
             return@get
         }
+
+        val exportBaseFilename =
+            job.title
+                ?.trim()
+                ?.replace(Regex("[\\\\/:*?\"<>|]"), "")
+                ?.replace(Regex("[“”‘’]"), "")
+                ?.replace(Regex("[\\p{So}\\p{Cn}]"), "")
+                ?.replace(Regex("(^|\\s)_([^_]+)_(?=\\s|$)"), "$1$2")
+                ?.replace(Regex("^[_\\-.\\s]+"), "")
+                ?.replace(Regex("[_\\-.\\s]+$"), "")
+                ?.replace(Regex("\\s+"), " ")
+                ?.ifBlank { null }
+                ?: "job_$jobId"
 
         val transcriptionPath = job.transcriptionPath
         val summaryPath = job.summaryPath
@@ -163,6 +203,7 @@ fun Route.exportRoutes(
                 isBold = true
                 fontSize = 16
                 setText("Creator Content Hub Export")
+
             }
         }
 
@@ -197,10 +238,20 @@ fun Route.exportRoutes(
         }
         doc.close()
 
+        val docxFilename =
+            "${exportBaseFilename}.docx"
+
         call.response.header(
             HttpHeaders.ContentDisposition,
             ContentDisposition.Attachment
-                .withParameter(ContentDisposition.Parameters.FileName, "job_$jobId.docx")
+                .withParameter(
+                    ContentDisposition.Parameters.FileName,
+                    docxFilename
+                )
+                .withParameter(
+                    "filename*",
+                    "UTF-8''$docxFilename"
+                )
                 .toString()
         )
 

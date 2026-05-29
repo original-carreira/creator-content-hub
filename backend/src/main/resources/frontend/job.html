@@ -23,6 +23,8 @@
 
 <script src="content-workspace/search/transcriptSearchController.js"></script>
 
+<script src="content-workspace/export/workspaceExportController.js"></script>
+
 <script>
 
     const workspaceStateApi =
@@ -112,7 +114,7 @@
     function renderJob(job) {
 
         workspaceStateApi.setWorkspaceJobId(
-            job.id
+            getJobId()
         );
 
         const container = document.getElementById("jobContent");
@@ -139,6 +141,11 @@
 
         window.TranscriptSearchController
             .bindTranscriptSearch(
+                workspaceStateApi
+            );
+
+        window.WorkspaceExportController
+            .bindWorkspaceExports(
                 workspaceStateApi
             );
 
