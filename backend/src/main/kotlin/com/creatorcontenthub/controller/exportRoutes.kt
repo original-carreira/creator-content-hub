@@ -117,12 +117,6 @@ fun Route.exportRoutes(
         val filename =
             "${exportBaseFilename}.txt"
 
-        logger.info(
-            "event=export_filename_debug rawTitle='{}' exportBaseFilename='{}'",
-            job.title,
-            exportBaseFilename
-        )
-
         call.response.headers.append(
             HttpHeaders.ContentDisposition,
             ContentDisposition.Attachment
@@ -203,7 +197,6 @@ fun Route.exportRoutes(
                 isBold = true
                 fontSize = 16
                 setText("Creator Content Hub Export")
-
             }
         }
 
