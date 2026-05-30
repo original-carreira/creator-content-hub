@@ -2,6 +2,15 @@ const workspaceState = {
 
     activeWorkspaceJobId: null,
 
+    assetCollection: {
+
+        collectionId: null,
+
+        version: 1,
+
+        assets: []
+    },
+
     originalTranscriptText: "",
 
     transcriptSearch: {
@@ -14,13 +23,18 @@ const workspaceState = {
 
         activeOccurrenceIndex: 0
     }
-
 };
 
 function setWorkspaceJobId(jobId) {
 
     workspaceState.activeWorkspaceJobId =
         jobId;
+}
+
+function setAssetCollection(assetCollection) {
+
+    workspaceState.assetCollection =
+        assetCollection;
 }
 
 function setOriginalTranscriptText(text) {
@@ -61,6 +75,8 @@ window.ContentWorkspaceState = {
     workspaceState,
 
     setWorkspaceJobId,
+
+    setAssetCollection,
 
     setOriginalTranscriptText,
 
