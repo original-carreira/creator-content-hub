@@ -2,6 +2,7 @@ package com.creatorcontenthub.controller
 
 import com.creatorcontenthub.application.dto.JobResponse
 import com.creatorcontenthub.application.port.JobRepository
+import com.creatorcontenthub.application.service.AssetResolver
 import com.creatorcontenthub.infrastructure.http.respondError
 import com.creatorcontenthub.infrastructure.http.respondSuccess
 import io.ktor.http.HttpHeaders
@@ -16,6 +17,8 @@ import org.slf4j.LoggerFactory
 fun Route.jobRoutes(repository: JobRepository) {
 
     val logger = LoggerFactory.getLogger("JobRoutes")
+
+    val assetResolver = AssetResolver()
 
     get("/jobs/{jobId}") {
 
@@ -41,7 +44,9 @@ fun Route.jobRoutes(repository: JobRepository) {
             title = job.title,
             thumbnailUrl = job.thumbnailUrl,
             transcription = job.transcription,
-            summary = job.summary
+            summary = job.summary,
+            audioAvailable =
+                !job.audioPath.isNullOrBlank()
         )
 
         call.respondSuccess(response)
@@ -127,6 +132,65 @@ fun Route.jobRoutes(repository: JobRepository) {
         logger.info("event=file_download_requested jobId={} type=summary", jobId)
     }
 
+    get("/jobs/{jobId}/assets/{assetId}/download") {
+
+        val jobId = call.parameters["jobId"]
+        val assetId = call.parameters["assetId"]
+
+        if (jobId.isNullOrBlank()) {
+            call.respondError(HttpStatusCode.BadRequest, "jobId is required")
+            return@get
+        }
+
+        if (assetId.isNullOrBlank()) {
+            call.respondError(HttpStatusCode.BadRequest, "assetId is required")
+            return@get
+        }
+
+        val job = repository.findById(jobId)
+
+        if (job == null) {
+            call.respondError(HttpStatusCode.NotFound, "Job not found")
+            return@get
+        }
+
+        val resolution = assetResolver.resolve(
+            assetId = assetId,
+            job = job
+        )
+
+        if (resolution == null) {
+            call.respondError(
+                HttpStatusCode.NotFound,
+                "Asset not available"
+            )
+            return@get
+        }
+
+        val file = File(resolution.filePath)
+
+        if (!file.exists()) {
+            call.respondError(
+                HttpStatusCode.NotFound,
+                "File not found"
+            )
+            return@get
+        }
+
+        call.response.header(
+            HttpHeaders.ContentDisposition,
+            "attachment; filename=\"${resolution.fileName}\""
+        )
+
+        call.respondFile(file)
+
+        logger.info(
+            "event=asset_download_requested jobId={} assetId={}",
+            jobId,
+            assetId
+        )
+    }
+
     get("/jobs/{jobId}/preview") {
 
         val jobId = call.parameters["jobId"]
@@ -172,4 +236,5 @@ fun Route.jobRoutes(repository: JobRepository) {
 
         logger.info("event=preview_requested jobId={}", jobId)
     }
+
 }

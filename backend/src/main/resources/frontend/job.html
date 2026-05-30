@@ -15,9 +15,17 @@
 
 <script src="content-workspace/state/workspaceState.js"></script>
 
+<script src="content-workspace/assets/assetActionFactory.js"></script>
+
+<script src="content-workspace/assets/assetActionController.js"></script>
+
+<script src="content-workspace/assets/assetCollectionFactory.js"></script>
+
 <script src="content-workspace/renderers/transcriptRenderer.js"></script>
 
 <script src="content-workspace/renderers/workspaceHeaderRenderer.js"></script>
+
+<script src="content-workspace/renderers/assetWorkspaceRenderer.js"></script>
 
 <script src="content-workspace/renderers/workspaceToolbarRenderer.js"></script>
 
@@ -117,16 +125,28 @@
             getJobId()
         );
 
+        const assetCollection =
+            window.AssetCollectionFactory
+                .buildAssetCollection(job);
+
+        workspaceStateApi.setAssetCollection(
+            assetCollection
+        );
+
         const container = document.getElementById("jobContent");
 
         container.innerHTML = `
             ${window.WorkspaceHeaderRenderer.renderJobHeader(job)}
 
+            ${window.AssetWorkspaceRenderer.renderAssetWorkspace(
+                workspaceStateApi.workspaceState.assetCollection
+            )}
+
             ${window.WorkspaceToolbarRenderer.renderWorkspaceToolbar()}
 
             ${window.TranscriptRenderer.renderTranscriptWorkspace()}
 
-            ${renderSummaryWorkspace()}
+                ${renderSummaryWorkspace()}
         `;
 
         workspaceStateApi.setOriginalTranscriptText(
@@ -146,6 +166,11 @@
 
         window.WorkspaceExportController
             .bindWorkspaceExports(
+                workspaceStateApi
+            );
+
+        window.AssetActionController
+            .bindAssetActions(
                 workspaceStateApi
             );
 
