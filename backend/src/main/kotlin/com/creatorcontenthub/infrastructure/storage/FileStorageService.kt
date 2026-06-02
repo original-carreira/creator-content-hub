@@ -40,4 +40,37 @@ class FileStorageService(
 
         return File(dir, fileName)
     }
+
+    private fun resolveAssetFile(jobId: String, assetType: String, fileName: String): File {
+
+        val dir = File("$baseDir/$jobId/assets/$assetType")
+
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+
+        return File(dir, fileName)
+    }
+
+    fun saveAsset(jobId: String, assetType: String, sourcePath: String, fileName: String): String {
+
+        val source = File(sourcePath)
+
+        require(source.exists()) {
+            "Asset source file does not exist: $sourcePath"
+        }
+
+        val target = resolveAssetFile(
+            jobId = jobId,
+            assetType = assetType,
+            fileName = fileName
+        )
+
+        source.copyTo(
+            target,
+            overwrite = true
+        )
+
+        return target.absolutePath
+    }
 }

@@ -34,7 +34,7 @@ class DownloadStep(
 
         val updated = job.copy(
             stage = JobStage.DOWNLOADED,
-            audioPath = result.audioPath,
+            videoPath = result.videoPath,
             title = result.title
         )
 

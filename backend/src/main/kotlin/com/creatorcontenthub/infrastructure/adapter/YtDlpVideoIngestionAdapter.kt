@@ -15,6 +15,7 @@ import com.creatorcontenthub.application.resilience.ErrorClassifier
 import com.creatorcontenthub.domain.model.ErrorType
 import com.creatorcontenthub.infrastructure.runtime.RuntimeEvent
 import com.creatorcontenthub.infrastructure.runtime.RuntimeEventBus
+import com.creatorcontenthub.infrastructure.storage.FileStorageService
 import org.slf4j.LoggerFactory
 import java.io.BufferedReader
 import java.nio.charset.StandardCharsets
@@ -28,7 +29,8 @@ class YtDlpVideoIngestionAdapter(
     private val outputDir: String,
     private val timeoutConfig: IngestionTimeoutConfig = IngestionTimeoutConfig(),
     private val jobRepository: JobRepository,
-    private val runtimeEventBus: RuntimeEventBus
+    private val runtimeEventBus: RuntimeEventBus,
+    private val fileStorageService: FileStorageService
 ) : VideoIngestionPort {
 
     companion object {
@@ -39,13 +41,13 @@ class YtDlpVideoIngestionAdapter(
 
     override suspend fun ingest(url: String, jobId: String): IngestionResult {
 
-        val audioDir = File(outputDir, "audio").apply {
+        val videoDir = File(outputDir, "video").apply {
             if (!exists() && !mkdirs()) {
                 throw RuntimeException("Failed to create output directory: $absolutePath")
             }
         }
 
-        val outputPathTemplate = "${audioDir.absolutePath}/$jobId.%(ext)s"
+        val outputPathTemplate = "${videoDir.absolutePath}/$jobId.%(ext)s"
 
         val ytDlpCommand = resolveCommand()
 
@@ -71,7 +73,7 @@ class YtDlpVideoIngestionAdapter(
             stage = "download",
             jobId = jobId
         ) {
-            cleanupPreviousArtifacts(audioDir, jobId)
+            cleanupPreviousArtifacts(videoDir, jobId)
             var process: Process? = null
             var readerThread: Thread? = null
 
@@ -79,8 +81,6 @@ class YtDlpVideoIngestionAdapter(
 
                 process = ProcessBuilder(
                     ytDlpCommand,
-                    "-x",
-                    "--audio-format", "mp3",
                     "--extractor-args", "youtube:player_client=android",
                     "--restrict-filenames",
                     "--no-playlist",
@@ -270,7 +270,14 @@ class YtDlpVideoIngestionAdapter(
             }
         }
 
-        val outputFile = File(audioDir, "$jobId.mp3")
+        val outputFile = videoDir
+            .listFiles()
+            ?.firstOrNull { file ->
+                file.name.startsWith("$jobId.")
+            }
+            ?: throw RuntimeException(
+                "Video file not generated for jobId=$jobId"
+            )
 
         if (!outputFile.exists() || outputFile.length() == 0L) {
             logger.error(
@@ -325,7 +332,7 @@ class YtDlpVideoIngestionAdapter(
             )
 
             return IngestionResult(
-                audioPath = outputFile.absolutePath,
+                videoPath = outputFile.absolutePath,
                 title = cachedTitle
             )
         }
@@ -359,7 +366,7 @@ class YtDlpVideoIngestionAdapter(
         )
 
         return IngestionResult(
-            audioPath = outputFile.absolutePath,
+            videoPath = outputFile.absolutePath,
             title = finalTitle
         )
     }
