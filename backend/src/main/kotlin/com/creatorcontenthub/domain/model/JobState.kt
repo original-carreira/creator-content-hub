@@ -21,7 +21,8 @@ data class JobState(
 
     val transcriptionPath: String? = null,
     val summaryPath: String? = null,
-    val audioPath: String? = null
+    val audioPath: String? = null,
+    val videoPath: String? = null
 ) {
 
     init {

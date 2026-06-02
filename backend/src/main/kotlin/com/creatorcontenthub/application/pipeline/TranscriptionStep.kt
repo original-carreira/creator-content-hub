@@ -13,7 +13,7 @@ class TranscriptionStep(
     private val fileStorageService: FileStorageService
 ) : PipelineStep {
 
-    override val supportedStage = JobStage.DOWNLOADED
+    override val supportedStage = JobStage.AUDIO_GENERATED
 
     override suspend fun execute(
         jobId: String,
@@ -21,7 +21,7 @@ class TranscriptionStep(
     ): JobState {
 
         // idempotência
-        if (job.stage != JobStage.DOWNLOADED) {
+        if (job.stage != JobStage.AUDIO_GENERATED) {
             return job
         }
 

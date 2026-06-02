@@ -6,6 +6,7 @@ import com.creatorcontenthub.application.usecase.DeleteJobUseCase
 import com.creatorcontenthub.application.usecase.DeleteJobsUseCase
 import com.creatorcontenthub.application.pipeline.DownloadStep
 import com.creatorcontenthub.application.pipeline.FinalizeJobStep
+import com.creatorcontenthub.application.pipeline.GenerateAudioStep
 import com.creatorcontenthub.application.pipeline.TranscriptionStep
 import com.creatorcontenthub.application.pipeline.SummaryStep
 import com.creatorcontenthub.application.pipeline.JobProcessor
@@ -34,6 +35,7 @@ import com.creatorcontenthub.controller.jobEventsRoutes
 import com.creatorcontenthub.controller.jobMutationRoutes
 import com.creatorcontenthub.controller.jobRoutes
 import com.creatorcontenthub.controller.searchRoutes
+import com.creatorcontenthub.infrastructure.adapter.FFmpegAudioGenerationAdapter
 import com.creatorcontenthub.infrastructure.adapter.YtDlpVideoIngestionAdapter
 import com.creatorcontenthub.infrastructure.adapter.WhisperTranscriptionAdapter
 import com.creatorcontenthub.infrastructure.adapter.FallbackSummarizationAdapter
@@ -210,7 +212,12 @@ fun Application.module() {
         outputDir = outputDir,
         timeoutConfig = IngestionTimeoutConfig(),
         jobRepository = jobRepository,
-        runtimeEventBus = runtimeEventBus
+        runtimeEventBus = runtimeEventBus,
+        fileStorageService = fileStorageService
+    )
+
+    val audioGenerationAdapter = FFmpegAudioGenerationAdapter(
+        fileStorageService = fileStorageService
     )
 
     val cleanupService = FileCleanupService(outputDir)
@@ -229,6 +236,11 @@ fun Application.module() {
 
     val downloadStep = DownloadStep(
         ingestionPort = videoIngestionAdapter,
+        jobRepository = jobRepository
+    )
+
+    val generateAudioStep = GenerateAudioStep(
+        audioGenerationPort = audioGenerationAdapter,
         jobRepository = jobRepository
     )
 
@@ -254,6 +266,7 @@ fun Application.module() {
         jobRepository = jobRepository,
         steps = listOf(
             downloadStep,
+            generateAudioStep,
             transcriptionStep,
             summaryStep,
             finalizeJobStep

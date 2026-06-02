@@ -146,6 +146,7 @@ class JobProcessor(
         val order = listOf(
             JobStage.CREATED,
             JobStage.DOWNLOADED,
+            JobStage.AUDIO_GENERATED,
             JobStage.TRANSCRIBED,
             JobStage.SUMMARIZED
         )
