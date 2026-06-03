@@ -39,11 +39,12 @@ class PostgresJobRepository(
                 transcription_path,
                 summary_path,
                 audio_path,
+                video_path,
                 thumbnail_url,
                 error_type,
                 error_message
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()
 
         dataSource.connection.use { conn ->
@@ -67,10 +68,11 @@ class PostgresJobRepository(
                 stmt.setString(14, job.summaryPath)
                 stmt.setString(15, job.audioPath)
 
-                stmt.setString(16, job.thumbnailUrl)
+                stmt.setString(16, job.videoPath)
+                stmt.setString(17, job.thumbnailUrl)
 
-                stmt.setString(17, job.errorType?.name)
-                stmt.setString(18, job.errorMessage)
+                stmt.setString(18, job.errorType?.name)
+                stmt.setString(19, job.errorMessage)
 
                 stmt.executeUpdate()
             }
@@ -101,7 +103,8 @@ class PostgresJobRepository(
                 thumbnail_url = ?,
                 transcription_path = ?,
                 summary_path = ?,
-                audio_path = ?
+                audio_path = ?,
+                video_path = ?
             WHERE job_id = ?
         """.trimIndent()
 
@@ -124,8 +127,9 @@ class PostgresJobRepository(
                 stmt.setString(13, job.transcriptionPath)
                 stmt.setString(14, job.summaryPath)
                 stmt.setString(15, job.audioPath)
+                stmt.setString(16, job.videoPath)
 
-                stmt.setString(16, jobId)
+                stmt.setString(17, jobId)
 
                 stmt.executeUpdate()
             }
@@ -227,7 +231,8 @@ class PostgresJobRepository(
                         thumbnailUrl = rs.getString("thumbnail_url")?.takeIf { it.isNotBlank() },
                         transcriptionPath = rs.getString("transcription_path")?.takeIf { it.isNotBlank() },
                         summaryPath = rs.getString("summary_path")?.takeIf { it.isNotBlank() },
-                        audioPath = rs.getString("audio_path")?.takeIf { it.isNotBlank() }
+                        audioPath = rs.getString("audio_path")?.takeIf { it.isNotBlank() },
+                        videoPath = rs.getString("video_path")?.takeIf { it.isNotBlank() }
                     )
                 }
             }
@@ -389,7 +394,8 @@ class PostgresJobRepository(
                         thumbnailUrl = rs.getString("thumbnail_url")?.takeIf { it.isNotBlank() },
                         transcriptionPath = rs.getString("transcription_path")?.takeIf { it.isNotBlank() },
                         summaryPath = rs.getString("summary_path")?.takeIf { it.isNotBlank() },
-                        audioPath = rs.getString("audio_path")?.takeIf { it.isNotBlank() }
+                        audioPath = rs.getString("audio_path")?.takeIf { it.isNotBlank() },
+                        videoPath = rs.getString("video_path")?.takeIf { it.isNotBlank() }
                     )
                 }
             }
@@ -404,6 +410,7 @@ class PostgresJobRepository(
                summary, summary_completed_at,
                video_id, title,
                transcription_path, summary_path, audio_path,
+               video_path,
                thumbnail_url
         FROM jobs
         WHERE video_id = ?
@@ -491,7 +498,8 @@ class PostgresJobRepository(
                         thumbnailUrl = rs.getString("thumbnail_url")?.takeIf { it.isNotBlank() },
                         transcriptionPath = rs.getString("transcription_path")?.takeIf { it.isNotBlank() },
                         summaryPath = rs.getString("summary_path")?.takeIf { it.isNotBlank() },
-                        audioPath = rs.getString("audio_path")?.takeIf { it.isNotBlank() }
+                        audioPath = rs.getString("audio_path")?.takeIf { it.isNotBlank() },
+                        videoPath = rs.getString("video_path")?.takeIf { it.isNotBlank() }
                     )
 
                     return jobId to jobState

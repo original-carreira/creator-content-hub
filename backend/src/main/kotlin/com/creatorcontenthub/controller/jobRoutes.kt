@@ -46,7 +46,9 @@ fun Route.jobRoutes(repository: JobRepository) {
             transcription = job.transcription,
             summary = job.summary,
             audioAvailable =
-                !job.audioPath.isNullOrBlank()
+                !job.audioPath.isNullOrBlank(),
+            videoAvailable =
+                !job.videoPath.isNullOrBlank()
         )
 
         call.respondSuccess(response)

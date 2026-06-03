@@ -12,5 +12,6 @@ data class JobResponse(
     val summary: String?,
     val title: String? = null,
     val thumbnailUrl: String? = null,
-    val audioAvailable: Boolean = false
+    val audioAvailable: Boolean = false,
+    val videoAvailable: Boolean = false
 )

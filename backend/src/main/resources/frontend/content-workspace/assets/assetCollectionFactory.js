@@ -5,6 +5,7 @@ function buildAssetCollection(job) {
         version: 1,
         assets: [
             buildThumbnailAsset(job),
+            buildVideoAsset(job),
             buildTranscriptAsset(job),
             buildSummaryAsset(job),
             buildAudioAsset(job)
@@ -102,6 +103,26 @@ function enrichAssetWithActions(asset) {
         actions:
             window.AssetActionFactory
                 .buildActions(asset)
+    };
+}
+
+function buildVideoAsset(job) {
+
+    if (!job.videoAvailable) {
+        return null;
+    }
+
+    return {
+        assetId: "video",
+        type: "video",
+        category: "video",
+
+        downloadable: true,
+        viewable: true,
+        playable: true,
+        editable: false,
+
+        available: true
     };
 }
 
