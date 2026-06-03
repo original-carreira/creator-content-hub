@@ -24,6 +24,7 @@ CREATE TABLE jobs (
                       transcription_path TEXT,
                       summary_path TEXT,
                       audio_path TEXT,
+                      video_path TEXT,
                       thumbnail_url TEXT,
 
                       error_type TEXT,
