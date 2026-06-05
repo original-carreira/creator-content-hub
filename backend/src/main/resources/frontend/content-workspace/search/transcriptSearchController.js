@@ -72,7 +72,7 @@ function bindTranscriptSearch(
 
                     workspaceStateApi
                         .workspaceState
-                        .originalTranscriptText,
+                        .transcript?.text || "",
 
                     workspaceStateApi
                         .workspaceState
@@ -107,7 +107,7 @@ function bindTranscriptSearch(
 
                         workspaceStateApi
                             .workspaceState
-                            .originalTranscriptText,
+                            .transcript?.text || "",
 
                         workspaceStateApi
                             .workspaceState
@@ -210,7 +210,7 @@ function goToNextOccurrence(workspaceStateApi) {
 
             workspaceStateApi
                 .workspaceState
-                .originalTranscriptText,
+                .transcript?.text || "",
 
             workspaceStateApi
                 .workspaceState
@@ -256,7 +256,7 @@ function goToPreviousOccurrence(workspaceStateApi) {
 
             workspaceStateApi
                 .workspaceState
-                .originalTranscriptText,
+                .transcript?.text || "",
 
             workspaceStateApi
                 .workspaceState

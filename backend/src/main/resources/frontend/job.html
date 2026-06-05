@@ -52,9 +52,17 @@
         }
 
         try {
-            const res = await fetch(`/jobs/${jobId}`);
-            const data = await res.json();
-            const job = data.data;
+            const jobResponse = await fetch(`/jobs/${jobId}`);
+
+            const jobData =  await jobResponse.json();
+
+            const job = jobData.data;
+
+            const transcript = await loadTranscript(jobId);
+
+            workspaceStateApi.setTranscript(
+                transcript.data
+            );
 
             renderJob(job);
 
@@ -68,6 +76,14 @@
             document.getElementById("jobContent").innerText =
                 "Erro ao carregar conteúdo";
         }
+    }
+
+    async function loadTranscript(jobId) {
+
+        const res =
+            await fetch(`/jobs/${jobId}/transcript`);
+
+        return await res.json();
     }
 
     function renderSummaryWorkspace() {
@@ -149,14 +165,14 @@
                 ${renderSummaryWorkspace()}
         `;
 
-        workspaceStateApi.setOriginalTranscriptText(
-            job.transcription || "(vazio)"
-        );
+        const transcriptText =
+            workspaceStateApi.workspaceState
+                .transcript?.text
+            || "(vazio)";
 
         window.TranscriptRenderer
             .renderTranscriptContent(
-                workspaceStateApi.workspaceState
-                    .originalTranscriptText
+                transcriptText
             );
 
         window.TranscriptSearchController
