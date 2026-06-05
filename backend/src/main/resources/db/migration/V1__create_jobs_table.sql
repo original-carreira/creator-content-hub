@@ -16,6 +16,7 @@ CREATE TABLE jobs (
                       title TEXT,
 
                       transcription TEXT,
+                      transcript_json TEXT,
                       transcription_completed_at BIGINT,
 
                       summary TEXT,

@@ -27,6 +27,8 @@ class WhisperTranscriptionAdapter(
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
+    private val whisperTranscriptParser = WhisperTranscriptParser()
+
     override fun transcribe(audioPath: String, jobId: String): TranscriptionResult {
         return WhisperConcurrencyLimiter.withPermitBlocking {
 
@@ -50,7 +52,7 @@ class WhisperTranscriptionAdapter(
             val command = listOf(
                 resolveCommand(),
                 audioPath,
-                "--output_format", "txt",
+                "--output_format", "all",
                 "--output_dir", outputDir.absolutePath,
                 "--fp16", "False"
             )
@@ -195,6 +197,18 @@ class WhisperTranscriptionAdapter(
 
                 val text = expectedFile.readText(Charsets.UTF_8).trim()
 
+                val jsonFile = outputDir.listFiles { _, name ->
+                    name.startsWith(audioFile.nameWithoutExtension) &&
+                            name.endsWith(".json")
+                }?.maxByOrNull { it.lastModified() }
+                    ?: throw RuntimeException("Transcription json output file not found")
+
+                val jsonContent =
+                    jsonFile.readText(Charsets.UTF_8)
+
+                val transcript =
+                    whisperTranscriptParser.parse(jsonContent)
+
                 if (text.isBlank()) {
                     throw RuntimeException("Transcription result is empty")
                 }
@@ -209,6 +223,7 @@ class WhisperTranscriptionAdapter(
 
                 TranscriptionResult(
                     text = text,
+                    transcript = transcript,
                     durationMs = totalDuration
                 )
 

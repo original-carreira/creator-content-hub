@@ -1,6 +1,8 @@
 package com.creatorcontenthub.controller
 
 import com.creatorcontenthub.application.dto.JobResponse
+import com.creatorcontenthub.application.dto.TranscriptResponse
+import com.creatorcontenthub.application.dto.TranscriptSegmentResponse
 import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.application.service.AssetResolver
 import com.creatorcontenthub.infrastructure.http.respondError
@@ -132,6 +134,54 @@ fun Route.jobRoutes(repository: JobRepository) {
         call.respondFile(file)
 
         logger.info("event=file_download_requested jobId={} type=summary", jobId)
+    }
+
+    get("/jobs/{jobId}/transcript") {
+
+        val jobId = call.parameters["jobId"]
+
+        if (jobId.isNullOrBlank()) {
+            call.respondError(
+                HttpStatusCode.BadRequest,
+                "jobId is required"
+            )
+            return@get
+        }
+
+        val job = repository.findById(jobId)
+
+        if (job == null) {
+            call.respondError(
+                HttpStatusCode.NotFound,
+                "Job not found"
+            )
+            return@get
+        }
+
+        val transcript = job.transcript
+
+        if (transcript == null) {
+            call.respondError(
+                HttpStatusCode.NotFound,
+                "Transcript not available"
+            )
+            return@get
+        }
+
+        val response =
+            TranscriptResponse(
+                text = transcript.text,
+                segments =
+                    transcript.segments.map {
+                        TranscriptSegmentResponse(
+                            start = it.start,
+                            end = it.end,
+                            text = it.text
+                        )
+                    }
+            )
+
+        call.respondSuccess(response)
     }
 
     get("/jobs/{jobId}/assets/{assetId}/download") {
