@@ -5,14 +5,20 @@ import com.creatorcontenthub.domain.model.ErrorType
 import com.creatorcontenthub.domain.model.JobStage
 import com.creatorcontenthub.domain.model.JobState
 import com.creatorcontenthub.domain.model.JobStatus
+import com.creatorcontenthub.domain.model.Transcript
 import org.slf4j.LoggerFactory
 import java.sql.Types
 import javax.sql.DataSource
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.decodeFromString
 
 class PostgresJobRepository(
     private val dataSource: DataSource
 ) : JobRepository {
     private val logger = LoggerFactory.getLogger(PostgresJobRepository::class.java)
+
+    private val json = Json
 
     override fun create(jobId: String, job: JobState) {
 
@@ -21,6 +27,11 @@ class PostgresJobRepository(
             logger.warn("event=write_guard_violation jobId={} status={}", jobId, job.status)
             throw IllegalStateException("Invalid state: final status without finishedAt")
         }
+
+        val transcriptJson =
+            job.transcript?.let {
+                json.encodeToString(it)
+            }
 
         val sql = """
             INSERT INTO jobs (
@@ -33,6 +44,7 @@ class PostgresJobRepository(
                 video_id,
                 title,
                 transcription,
+                transcript_json,
                 transcription_completed_at,
                 summary,
                 summary_completed_at,
@@ -44,7 +56,7 @@ class PostgresJobRepository(
                 error_type,
                 error_message
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent()
 
         dataSource.connection.use { conn ->
@@ -60,19 +72,21 @@ class PostgresJobRepository(
                 stmt.setString(8, job.title)
 
                 stmt.setString(9, job.transcription)
-                stmt.setLongOrNull(10, job.transcriptionCompletedAt)
-                stmt.setString(11, job.summary)
-                stmt.setLongOrNull(12, job.summaryCompletedAt)
+                stmt.setString(10, transcriptJson)
 
-                stmt.setString(13, job.transcriptionPath)
-                stmt.setString(14, job.summaryPath)
-                stmt.setString(15, job.audioPath)
+                stmt.setLongOrNull(11, job.transcriptionCompletedAt)
+                stmt.setString(12, job.summary)
+                stmt.setLongOrNull(13, job.summaryCompletedAt)
 
-                stmt.setString(16, job.videoPath)
-                stmt.setString(17, job.thumbnailUrl)
+                stmt.setString(14, job.transcriptionPath)
+                stmt.setString(15, job.summaryPath)
+                stmt.setString(16, job.audioPath)
 
-                stmt.setString(18, job.errorType?.name)
-                stmt.setString(19, job.errorMessage)
+                stmt.setString(17, job.videoPath)
+                stmt.setString(18, job.thumbnailUrl)
+
+                stmt.setString(19, job.errorType?.name)
+                stmt.setString(20, job.errorMessage)
 
                 stmt.executeUpdate()
             }
@@ -87,6 +101,11 @@ class PostgresJobRepository(
             throw IllegalStateException("Invalid state: final status without finishedAt")
         }
 
+        val transcriptJson =
+            job.transcript?.let {
+                json.encodeToString(it)
+            }
+
         val sql = """
             UPDATE jobs SET
                 status = ?,
@@ -94,6 +113,7 @@ class PostgresJobRepository(
                 video_id = ?,
                 finished_at = ?,
                 transcription = ?,
+                transcript_json = ?,
                 transcription_completed_at = ?,
                 summary = ?,
                 summary_completed_at = ?,
@@ -115,21 +135,22 @@ class PostgresJobRepository(
                 stmt.setString(3, job.videoId)
                 stmt.setLongOrNull(4, job.finishedAt)
                 stmt.setString(5, job.transcription)
-                stmt.setLongOrNull(6, job.transcriptionCompletedAt)
-                stmt.setString(7, job.summary)
-                stmt.setLongOrNull(8, job.summaryCompletedAt)
-                stmt.setString(9, job.errorType?.name)
-                stmt.setString(10, job.errorMessage)
-                stmt.setString(11, job.title)
+                stmt.setString(6, transcriptJson)
+                stmt.setLongOrNull(7, job.transcriptionCompletedAt)
+                stmt.setString(8, job.summary)
+                stmt.setLongOrNull(9, job.summaryCompletedAt)
+                stmt.setString(10, job.errorType?.name)
+                stmt.setString(11, job.errorMessage)
+                stmt.setString(12, job.title)
 
-                stmt.setString(12, job.thumbnailUrl)
+                stmt.setString(13, job.thumbnailUrl)
 
-                stmt.setString(13, job.transcriptionPath)
-                stmt.setString(14, job.summaryPath)
-                stmt.setString(15, job.audioPath)
-                stmt.setString(16, job.videoPath)
+                stmt.setString(14, job.transcriptionPath)
+                stmt.setString(15, job.summaryPath)
+                stmt.setString(16, job.audioPath)
+                stmt.setString(17, job.videoPath)
 
-                stmt.setString(17, jobId)
+                stmt.setString(18, jobId)
 
                 stmt.executeUpdate()
             }
@@ -200,6 +221,15 @@ class PostgresJobRepository(
                         else
                             null
 
+                    val transcriptJson = rs.getString("transcript_json")
+
+                    val transcript =
+                        transcriptJson
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let {
+                                json.decodeFromString<Transcript>(it)
+                            }
+
                     val rawErrorType = rs.getString("error_type")
                     val safeErrorType =
                         if (status == JobStatus.FAILED) {
@@ -222,6 +252,7 @@ class PostgresJobRepository(
                         videoId = rs.getString("video_id"),
                         finishedAt = safeFinishedAt,
                         transcription = safeTranscription,
+                        transcript = transcript,
                         transcriptionCompletedAt = safeTranscriptionCompletedAt,
                         summary = summaryDb,
                         summaryCompletedAt = safeSummaryCompletedAt,
@@ -363,6 +394,14 @@ class PostgresJobRepository(
                         else
                             null
 
+                    val transcriptJson = rs.getString("transcript_json")
+                    val transcript =
+                        transcriptJson
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let {
+                                json.decodeFromString<Transcript>(it)
+                            }
+
                     val rawErrorType = rs.getString("error_type")
                     val safeErrorType =
                         if (status == JobStatus.FAILED) {
@@ -385,6 +424,7 @@ class PostgresJobRepository(
                         videoId = rs.getString("video_id"),
                         finishedAt = safeFinishedAt,
                         transcription = safeTranscription,
+                        transcript = transcript,
                         transcriptionCompletedAt = safeTranscriptionCompletedAt,
                         summary = summaryDb,
                         summaryCompletedAt = safeSummaryCompletedAt,
@@ -406,7 +446,7 @@ class PostgresJobRepository(
         val sql = """
         SELECT job_id, status, created_at, started_at, finished_at,
                error_type, error_message,
-               transcription, transcription_completed_at,
+               transcription, transcript_json, transcription_completed_at,
                summary, summary_completed_at,
                video_id, title,
                transcription_path, summary_path, audio_path,
@@ -467,6 +507,14 @@ class PostgresJobRepository(
                         else
                             null
 
+                    val transcriptJson = rs.getString("transcript_json")
+                    val transcript =
+                        transcriptJson
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let {
+                                json.decodeFromString<Transcript>(it)
+                            }
+
                     val rawErrorType = rs.getString("error_type")
                     val safeErrorType =
                         if (status == JobStatus.FAILED) {
@@ -489,6 +537,7 @@ class PostgresJobRepository(
                         videoId = rs.getString("video_id"),
                         finishedAt = safeFinishedAt,
                         transcription = safeTranscription,
+                        transcript = transcript,
                         transcriptionCompletedAt = safeTranscriptionCompletedAt,
                         summary = summaryDb,
                         summaryCompletedAt = safeSummaryCompletedAt,

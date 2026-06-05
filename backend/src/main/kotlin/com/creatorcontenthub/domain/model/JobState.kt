@@ -13,6 +13,7 @@ data class JobState(
     val errorType: ErrorType? = null,
     val errorMessage: String? = null,
     val transcription: String? = null,
+    val transcript: Transcript? = null,
     val transcriptionCompletedAt: Long? = null,
     val summary: String? = null,
     val summaryCompletedAt: Long? = null,
