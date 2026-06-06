@@ -11,7 +11,7 @@ const workspaceState = {
         assets: []
     },
 
-    originalTranscriptText: "",
+    transcript: null,
 
     transcriptSearch: {
 
@@ -37,10 +37,10 @@ function setAssetCollection(assetCollection) {
         assetCollection;
 }
 
-function setOriginalTranscriptText(text) {
+function setTranscript(transcript) {
 
-    workspaceState.originalTranscriptText =
-        text || "";
+    workspaceState.transcript =
+        transcript || null;
 }
 
 function setTranscriptSearchTerm(searchTerm) {
@@ -78,7 +78,7 @@ window.ContentWorkspaceState = {
 
     setAssetCollection,
 
-    setOriginalTranscriptText,
+    setTranscript,
 
     setTranscriptSearchTerm,
 
