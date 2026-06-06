@@ -58,6 +58,26 @@ function escapeHtml(text) {
         .replace(/>/g,"&gt;");
 }
 
+function formatTimestamp(seconds) {
+
+    const totalSeconds =
+        Math.floor(
+            Number(seconds) || 0
+        );
+
+    const minutes =
+        Math.floor(
+            totalSeconds / 60
+        );
+
+    const remainingSeconds =
+        totalSeconds % 60;
+
+    return `${String(minutes).padStart(2, "0")}:${String(
+        remainingSeconds
+    ).padStart(2, "0")}`;
+}
+
 function renderTranscriptContent(
     text,
     searchTerm = "",
@@ -131,9 +151,75 @@ function renderTranscriptContent(
 
 }
 
+function renderTranscriptSegments(
+    segments
+) {
+
+    const transcriptionEl =
+        document.getElementById(
+            "transcription"
+        );
+
+    if (!transcriptionEl) {
+        return;
+    }
+
+    if (
+        !segments ||
+        segments.length === 0
+    ) {
+        transcriptionEl.innerText =
+            "(vazio)";
+
+        return;
+    }
+
+    transcriptionEl.innerHTML =
+        segments
+            .map(
+                (segment, index) => `
+                    <div
+                        style="
+                            display:flex;
+                            align-items:flex-start;
+                            gap:10px;
+                            margin-bottom:8px;
+                        "
+                        data-segment-index="${index}"
+                    >
+
+                        <div
+                            style="
+                                min-width:45px;
+                                color:#666;
+                                font-size:12px;
+                                font-weight:bold;
+                                flex-shrink:0;
+                            "
+                        >
+                            ${formatTimestamp(segment.start)}
+                        </div>
+
+                        <div
+                            style="
+                                flex:1;
+                                line-height:1.5;
+                            "
+                        >
+                            ${escapeHtml(segment.text || "")}
+                        </div>
+
+                    </div>
+                `
+            )
+            .join("");
+}
+
 window.TranscriptRenderer = {
 
     renderTranscriptWorkspace,
 
-    renderTranscriptContent
+    renderTranscriptContent,
+
+    renderTranscriptSegments
 };

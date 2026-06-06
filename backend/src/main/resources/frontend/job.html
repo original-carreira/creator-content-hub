@@ -165,14 +165,13 @@
                 ${renderSummaryWorkspace()}
         `;
 
-        const transcriptText =
-            workspaceStateApi.workspaceState
-                .transcript?.text
-            || "(vazio)";
-
         window.TranscriptRenderer
-            .renderTranscriptContent(
-                transcriptText
+            .renderTranscriptSegments(
+
+                workspaceStateApi
+                    .workspaceState
+                    .transcript
+                    ?.segments || []
             );
 
         window.TranscriptSearchController
