@@ -152,8 +152,15 @@ function renderTranscriptContent(
 }
 
 function renderTranscriptSegments(
-    segments
+    segments,
+    searchTerm = "",
+    activeOccurrenceIndex = -1
 ) {
+
+    let occurrenceIndex = 0;
+
+    const escapedSearch =
+        escapeHtml(searchTerm);
 
     const transcriptionEl =
         document.getElementById(
@@ -184,6 +191,8 @@ function renderTranscriptSegments(
                             align-items:flex-start;
                             gap:10px;
                             margin-bottom:8px;
+                            border-radius:8px;
+                            transition:background-color 0.2s ease;
                         "
                         data-segment-index="${index}"
                     >
@@ -206,7 +215,51 @@ function renderTranscriptSegments(
                                 line-height:1.5;
                             "
                         >
-                            ${escapeHtml(segment.text || "")}
+                            ${(() => {
+
+                                const escapedSegmentText =
+                                    escapeHtml(
+                                    segment.text || ""
+                                    );
+
+                                if (!searchTerm) {
+                                    return escapedSegmentText;
+                                }
+
+                                const regex =
+                                    new RegExp(
+                                        `(${escapedSearch})`,
+                                        "gi"
+                                    );
+
+                                return escapedSegmentText.replace(
+                                    regex,
+                                    (match) => {
+
+                                        const currentIndex =
+                                            occurrenceIndex++;
+                                        
+                                        const isActive =
+                                            currentIndex ===
+                                            activeOccurrenceIndex;
+
+                                        const className =
+                                            isActive
+                                                ? "transcript-highlight-active"
+                                                : "transcript-highlight";
+
+                                        return `
+                                            <mark
+                                                class="${className}"
+                                                data-occurrence-index="${currentIndex}"
+                                            >
+                                                ${match}
+                                            </mark>
+                                        `;
+                                    }
+                                );
+
+                            })()}
                         </div>
 
                     </div>

@@ -7,6 +7,8 @@ function bindTranscriptSearch(
             "transcriptSearchInput"
         );
 
+    bindSegmentNavigation();
+
     if (!input) {
         return;
     }
@@ -68,11 +70,11 @@ function bindTranscriptSearch(
                 );
 
             window.TranscriptRenderer
-                .renderTranscriptContent(
+                .renderTranscriptSegments(
 
                     workspaceStateApi
                         .workspaceState
-                        .transcript?.text || "",
+                        .transcript?.segments || [],
 
                     workspaceStateApi
                         .workspaceState
@@ -103,11 +105,11 @@ function bindTranscriptSearch(
                     0;
 
                 window.TranscriptRenderer
-                    .renderTranscriptContent(
+                    .renderTranscriptSegments(
 
                         workspaceStateApi
                             .workspaceState
-                            .transcript?.text || "",
+                            .transcript?.segments || [],
 
                         workspaceStateApi
                             .workspaceState
@@ -206,11 +208,11 @@ function goToNextOccurrence(workspaceStateApi) {
         nextIndex;
 
     window.TranscriptRenderer
-        .renderTranscriptContent(
+        .renderTranscriptSegments(
 
             workspaceStateApi
                 .workspaceState
-                .transcript?.text || "",
+                .transcript?.segments || [],
 
             workspaceStateApi
                 .workspaceState
@@ -252,11 +254,11 @@ function goToPreviousOccurrence(workspaceStateApi) {
         previousIndex;
 
     window.TranscriptRenderer
-        .renderTranscriptContent(
+        .renderTranscriptSegments(
 
             workspaceStateApi
                 .workspaceState
-                .transcript?.text || "",
+                .transcript?.segments || [],
 
             workspaceStateApi
                 .workspaceState
@@ -305,6 +307,103 @@ function updateSearchOccurrenceCounter(workspaceStateApi){
 
     counterEl.innerText =
         `${activeIndex + 1} de ${total}`;
+}
+
+function getTranscriptSegments() {
+
+    const transcriptionEl =
+        document.getElementById(
+            "transcription"
+        );
+
+    if (!transcriptionEl) {
+        return [];
+    }
+
+    return Array.from(
+        transcriptionEl.querySelectorAll(
+            "[data-segment-index]"
+        )
+    );
+}
+
+function clearActiveSegment() {
+
+    getTranscriptSegments()
+        .forEach(
+            (segment) => {
+
+                segment.style.backgroundColor =
+                    "";
+
+                segment.style.padding =
+                    "";
+
+                segment.style.borderRadius =
+                    "";
+            }
+        );
+}
+
+function activateSegment(index) {
+
+    const segment =
+        document.querySelector(
+            `[data-segment-index="${index}"]`
+        );
+
+    if (!segment) {
+        return;
+    }
+
+    clearActiveSegment();
+
+    segment.style.backgroundColor =
+        "#eef6ff";
+
+    segment.style.padding =
+        "6px";
+
+    segment.style.borderRadius =
+        "8px";
+
+    segment.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+    });
+}
+
+function bindSegmentNavigation() {
+
+    const transcriptionEl =
+        document.getElementById(
+            "transcription"
+        );
+
+    if (!transcriptionEl) {
+        return;
+    }
+
+    transcriptionEl.addEventListener(
+        "click",
+        (event) => {
+
+            const segment =
+                event.target.closest(
+                    "[data-segment-index]"
+                );
+
+            if (!segment) {
+                return;
+            }
+
+            activateSegment(
+                Number(
+                    segment.dataset.segmentIndex
+                )
+            );
+        }
+    );
 }
 
 window.TranscriptSearchController = {
