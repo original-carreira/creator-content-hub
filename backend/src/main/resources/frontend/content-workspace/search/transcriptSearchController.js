@@ -405,6 +405,11 @@ function activateSegment(index) {
         return;
     }
 
+    window.ContentWorkspaceState
+        .setActiveSegmentIndex(
+            index
+        );
+
     clearActiveSegment();
 
     segment.style.backgroundColor =

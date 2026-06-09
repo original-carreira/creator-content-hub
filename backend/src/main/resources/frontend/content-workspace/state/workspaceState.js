@@ -13,6 +13,8 @@ const workspaceState = {
 
     transcript: null,
 
+    activeSegmentIndex: null,
+
     transcriptSearch: {
 
         searchTerm: "",
@@ -41,6 +43,12 @@ function setTranscript(transcript) {
 
     workspaceState.transcript =
         transcript || null;
+}
+
+function setActiveSegmentIndex(index) {
+
+    workspaceState.activeSegmentIndex =
+        index;
 }
 
 function setTranscriptSearchTerm(searchTerm) {
@@ -79,6 +87,8 @@ window.ContentWorkspaceState = {
     setAssetCollection,
 
     setTranscript,
+
+    setActiveSegmentIndex,
 
     setTranscriptSearchTerm,
 
