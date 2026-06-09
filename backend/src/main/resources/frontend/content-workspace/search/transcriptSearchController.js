@@ -122,7 +122,13 @@ function bindTranscriptSearch(
                             .activeOccurrenceIndex
                     );
 
-                scrollToOccurrence(0);
+                activateSegmentForOccurrence(
+                    0
+                );
+
+                scrollToOccurrence(
+                    0
+                );
 
                 updateSearchOccurrenceCounter(
                     workspaceStateApi
@@ -182,6 +188,37 @@ function scrollToOccurrence(index) {
     });
 }
 
+function activateSegmentForOccurrence(index) {
+
+    const occurrences =
+        getTranscriptOccurrences();
+
+    if (
+        index < 0 ||
+        index >= occurrences.length
+    ) {
+        return;
+    }
+
+    const occurrence =
+        occurrences[index];
+
+    const segment =
+        occurrence.closest(
+            "[data-segment-index]"
+        );
+
+    if (!segment) {
+        return;
+    }
+
+    activateSegment(
+        Number(
+            segment.dataset.segmentIndex
+        )
+    );
+}
+
 function goToNextOccurrence(workspaceStateApi) {
     const occurrences =
         getTranscriptOccurrences();
@@ -225,7 +262,13 @@ function goToNextOccurrence(workspaceStateApi) {
                 .activeOccurrenceIndex
         );
 
-    scrollToOccurrence(nextIndex);
+    activateSegmentForOccurrence(
+        nextIndex
+    );
+
+    scrollToOccurrence(
+        nextIndex
+    );
 }
 
 function goToPreviousOccurrence(workspaceStateApi) {
@@ -271,7 +314,13 @@ function goToPreviousOccurrence(workspaceStateApi) {
                 .activeOccurrenceIndex
         );
 
-    scrollToOccurrence(previousIndex);
+    activateSegmentForOccurrence(
+        previousIndex
+    );
+
+    scrollToOccurrence(
+        previousIndex
+    );
 }
 
 function updateSearchOccurrenceCounter(workspaceStateApi){
