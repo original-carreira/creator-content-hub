@@ -22,6 +22,47 @@ function renderTranscriptWorkspace() {
                     Workspace de Conteúdo
                 </span>
             </div>
+            
+            <div
+                id="selectedSegmentContext"
+                style="
+                    border:1px solid #ddd;
+                    border-radius:10px;
+                    background:#fafafa;
+                    padding:16px;
+                    margin-bottom:12px;
+                "
+            >
+                <div
+                    style="
+                        display:flex;
+                        justify-content:space-between;
+                        align-items:center;
+                        margin-bottom:10px;
+                    "
+                >
+                    <strong>Segmento Selecionado</strong>
+
+                    <span
+                        style="
+                            font-size:12px;
+                            color:#666;
+                        "
+                    >
+                        Contexto do Segmento
+                    </span>
+                </div>
+
+                <div
+                    id="selectedSegmentContent"
+                    style="
+                        color:#666;
+                        font-size:14px;
+                    "
+                >
+                    Nenhum segmento selecionado
+                </div>
+            </div>
 
             <div
                 id="transcriptionContainer"
@@ -76,6 +117,76 @@ function formatTimestamp(seconds) {
     return `${String(minutes).padStart(2, "0")}:${String(
         remainingSeconds
     ).padStart(2, "0")}`;
+}
+
+function renderSelectedSegmentContext(
+    segment
+) {
+
+    const container =
+        document.getElementById(
+            "selectedSegmentContent"
+        );
+
+    if (!container) {
+        return;
+    }
+
+    if (!segment) {
+
+        container.innerHTML =
+            "Nenhum segmento selecionado";
+
+        return;
+    }
+
+    const start =
+        Number(segment.start) || 0;
+
+    const end =
+        Number(segment.end) || 0;
+
+    const duration =
+        Math.max(
+            0,
+            end - start
+        );
+
+    container.innerHTML = `
+        <div
+            style="
+                display:flex;
+                gap:20px;
+                margin-bottom:10px;
+                font-size:13px;
+            "
+        >
+            <div>
+                <strong>Início:</strong>
+                ${formatTimestamp(start)}
+            </div>
+
+            <div>
+                <strong>Fim:</strong>
+                ${formatTimestamp(end)}
+            </div>
+
+            <div>
+                <strong>Duração:</strong>
+                ${formatTimestamp(duration)}
+            </div>
+        </div>
+
+        <div
+            style="
+                line-height:1.6;
+                white-space:pre-wrap;
+                word-break:break-word;
+            "
+        >
+            ${escapeHtml(segment.text || "")}
+        </div>
+    `;
 }
 
 function renderTranscriptContent(
@@ -274,5 +385,7 @@ window.TranscriptRenderer = {
 
     renderTranscriptContent,
 
-    renderTranscriptSegments
+    renderTranscriptSegments,
+
+    renderSelectedSegmentContext
 };
