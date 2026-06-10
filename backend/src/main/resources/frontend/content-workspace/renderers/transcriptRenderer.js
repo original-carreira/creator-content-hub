@@ -29,7 +29,7 @@ function renderTranscriptWorkspace() {
                     border:1px solid #ddd;
                     border-radius:10px;
                     background:#fafafa;
-                    padding:16px;
+                    padding:10px;
                     margin-bottom:12px;
                 "
             >
@@ -61,6 +61,47 @@ function renderTranscriptWorkspace() {
                     "
                 >
                     Nenhum segmento selecionado
+                </div>
+            </div>
+            
+            <div
+                id="selectedRangesContext"
+                style="
+                    border:1px solid #ddd;
+                    border-radius:10px;
+                    background:#fafafa;
+                    padding:12px;
+                    margin-bottom:12px;
+                "
+            >
+                <div
+                    style="
+                        display:flex;
+                        justify-content:space-between;
+                        align-items:center;
+                        margin-bottom:8px;
+                    "
+                >
+                    <strong>Cortes Selecionados</strong>
+
+                    <span
+                        style="
+                            font-size:12px;
+                            color:#666;
+                        "
+                    >
+                        Contexto dos Cortes
+                    </span>
+                </div>
+
+                <div
+                    id="selectedRangesContent"
+                    style="
+                        color:#666;
+                        font-size:14px;
+                    "
+                >
+                    Nenhum corte selecionado
                 </div>
             </div>
 
@@ -119,9 +160,7 @@ function formatTimestamp(seconds) {
     ).padStart(2, "0")}`;
 }
 
-function renderSelectedSegmentContext(
-    segment
-) {
+function renderSelectedSegmentContext(segment) {
 
     const container =
         document.getElementById(
@@ -187,6 +226,107 @@ function renderSelectedSegmentContext(
             ${escapeHtml(segment.text || "")}
         </div>
     `;
+}
+
+function renderSelectedRangesContext() {
+
+    const container =
+        document.getElementById(
+            "selectedRangesContent"
+        );
+
+    if (!container) {
+        return;
+    }
+
+    const transcript =
+        window.ContentWorkspaceState
+            .workspaceState
+            .transcript;
+
+    const ranges =
+        window.ContentWorkspaceState
+            .workspaceState
+            .selectionRanges;
+
+    if (
+        !ranges ||
+        ranges.length === 0
+    ) {
+
+        container.innerHTML =
+            "Nenhum corte selecionado";
+
+        return;
+    }
+
+    container.innerHTML =
+        ranges
+            .map(
+                (
+                    range,
+                    index
+                ) => {
+
+                    const startSegment =
+                        transcript
+                            ?.segments?.[
+                            range.startIndex
+                            ];
+
+                    const endSegment =
+                        transcript
+                            ?.segments?.[
+                            range.endIndex
+                            ];
+
+                    if (
+                        !startSegment ||
+                        !endSegment
+                    ) {
+                        return "";
+                    }
+
+                    const start =
+                        Number(
+                            startSegment.start
+                        ) || 0;
+
+                    const end =
+                        Number(
+                            endSegment.end
+                        ) || 0;
+
+                    const duration =
+                        Math.max(
+                            0,
+                            end - start
+                        );
+
+                    return `
+                        <div
+                            style="
+                                margin-bottom:6px;
+                            "
+                        >
+                            <strong>
+                                Corte Selecionado Nº${index + 1}
+                            </strong>
+
+                            -
+                            <strong>Início:</strong>
+                            ${formatTimestamp(start)}
+
+                            <strong>Fim:</strong>
+                            ${formatTimestamp(end)}
+
+                            <strong>Duração:</strong>
+                            ${formatTimestamp(duration)}
+                        </div>
+                    `;
+                }
+            )
+            .join("");
 }
 
 function renderTranscriptContent(
@@ -387,5 +527,7 @@ window.TranscriptRenderer = {
 
     renderTranscriptSegments,
 
-    renderSelectedSegmentContext
+    renderSelectedSegmentContext,
+
+    renderSelectedRangesContext
 };

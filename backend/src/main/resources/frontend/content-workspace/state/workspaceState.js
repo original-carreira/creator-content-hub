@@ -15,6 +15,13 @@ const workspaceState = {
 
     activeSegmentIndex: null,
 
+    pendingRange: {
+
+        startIndex: null
+    },
+
+    selectionRanges: [],
+
     transcriptSearch: {
 
         searchTerm: "",
@@ -49,6 +56,27 @@ function setActiveSegmentIndex(index) {
 
     workspaceState.activeSegmentIndex =
         index;
+}
+
+function setPendingRangeStart(
+    startIndex
+) {
+
+    workspaceState.pendingRange.startIndex =
+        startIndex;
+}
+
+function addSelectionRange(
+    startIndex,
+    endIndex
+) {
+
+    workspaceState.selectionRanges.push({
+
+        startIndex,
+
+        endIndex
+    });
 }
 
 function setTranscriptSearchTerm(searchTerm) {
@@ -89,6 +117,10 @@ window.ContentWorkspaceState = {
     setTranscript,
 
     setActiveSegmentIndex,
+
+    setPendingRangeStart,
+
+    addSelectionRange,
 
     setTranscriptSearchTerm,
 
