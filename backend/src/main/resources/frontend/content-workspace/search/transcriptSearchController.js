@@ -410,6 +410,19 @@ function activateSegment(index) {
             index
         );
 
+    const selectedSegment =
+        window.ContentWorkspaceState
+            .workspaceState
+            .transcript
+            ?.segments?.[
+            index
+            ];
+
+    window.TranscriptRenderer
+        .renderSelectedSegmentContext(
+            selectedSegment
+        );
+
     clearActiveSegment();
 
     segment.style.backgroundColor =
