@@ -394,6 +394,71 @@ function clearActiveSegment() {
         );
 }
 
+function clearPendingRangeHighlight() {
+
+    getTranscriptSegments()
+        .forEach(
+            (segment) => {
+
+                segment.style.outline = "";
+
+                segment.style.outlineOffset = "";
+            }
+        );
+}
+
+function highlightPendingRangeStart(index) {
+
+    clearPendingRangeHighlight();
+
+    const segment =
+        document.querySelector(
+            `[data-segment-index="${index}"]`
+        );
+
+    if (!segment) {
+        return;
+    }
+
+    segment.style.outline =
+        "2px dashed #f59e0b";
+
+    segment.style.outlineOffset =
+        "2px";
+}
+
+function highlightPersistedRanges() {
+
+    const ranges =
+        window.ContentWorkspaceState
+            .workspaceState
+            .selectionRanges;
+
+    ranges.forEach(
+        (range) => {
+
+            for (
+                let index = range.startIndex;
+                index <= range.endIndex;
+                index++
+            ) {
+
+                const segment =
+                    document.querySelector(
+                        `[data-segment-index="${index}"]`
+                    );
+
+                if (!segment) {
+                    continue;
+                }
+
+                segment.style.backgroundColor =
+                    "#fef3c7";
+            }
+        }
+    );
+}
+
 function activateSegment(index) {
 
     const segment =
@@ -464,10 +529,68 @@ function bindSegmentNavigation() {
                 return;
             }
 
-            activateSegment(
+            const index =
                 Number(
                     segment.dataset.segmentIndex
-                )
+                );
+
+            if (event.shiftKey) {
+
+                const pendingStart =
+                    window.ContentWorkspaceState
+                        .workspaceState
+                        .pendingRange
+                        .startIndex;
+
+                if (pendingStart === null) {
+
+                    window.ContentWorkspaceState
+                        .setPendingRangeStart(
+                            index
+                        );
+
+                    highlightPendingRangeStart(
+                        index
+                    );
+
+                    return;
+                }
+
+                const startIndex =
+                    Math.min(
+                        pendingStart,
+                        index
+                    );
+
+                const endIndex =
+                    Math.max(
+                        pendingStart,
+                        index
+                    );
+
+                window.ContentWorkspaceState
+                    .addSelectionRange(
+                        startIndex,
+                        endIndex
+                    );
+
+                window.TranscriptRenderer
+                    .renderSelectedRangesContext();
+
+                window.ContentWorkspaceState
+                    .setPendingRangeStart(
+                        null
+                    );
+
+                clearPendingRangeHighlight();
+
+                highlightPersistedRanges();
+
+                return;
+            }
+
+            activateSegment(
+                index
             );
         }
     );
