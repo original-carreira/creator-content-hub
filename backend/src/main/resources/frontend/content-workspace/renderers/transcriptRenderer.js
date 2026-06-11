@@ -82,7 +82,29 @@ function renderTranscriptWorkspace() {
                         margin-bottom:8px;
                     "
                 >
-                    <strong>Cortes Selecionados</strong>
+                    <div
+                        style="
+                            display:flex;
+                            align-items:center;
+                            gap:8px;
+                        "
+                    >
+                        <strong>Cortes Selecionados</strong>
+
+                        <button
+                            type="button"
+                            id="exportRangesTxtButton"
+                        >
+                            Exportar TXT
+                        </button>
+                        
+                        <button
+                            type="button"
+                            id="clearRangesButton"
+                        >
+                            Limpar Todos
+                        </button>
+                    </div>
 
                     <span
                         style="
@@ -306,27 +328,114 @@ function renderSelectedRangesContext() {
                     return `
                         <div
                             style="
+                                display:flex;
+                                align-items:center;
+                                gap:10px;
                                 margin-bottom:6px;
+                                flex-wrap:wrap;
                             "
                         >
                             <strong>
-                                Corte Selecionado Nº${index + 1}
+                                Corte #${index + 1}
                             </strong>
 
-                            -
-                            <strong>Início:</strong>
-                            ${formatTimestamp(start)}
+                            <span>
+                                Início:
+                                ${formatTimestamp(start)}
+                            </span>
 
-                            <strong>Fim:</strong>
-                            ${formatTimestamp(end)}
+                            <span>
+                                Fim:
+                                ${formatTimestamp(end)}
+                            </span>
 
-                            <strong>Duração:</strong>
-                            ${formatTimestamp(duration)}
+                            <span>
+                                Duração:
+                                ${formatTimestamp(duration)}
+                            </span>
+
+                            <button
+                                type="button"
+                                data-range-index="${index}"
+                            >
+                                Remover
+                            </button>
                         </div>
                     `;
                 }
             )
             .join("");
+}
+
+function bindRangeActions() {
+
+    const container =
+        document.getElementById(
+            "selectedRangesContent"
+        );
+
+    if (!container) {
+        return;
+    }
+
+    container.addEventListener(
+        "click",
+        (event) => {
+
+            const button =
+                event.target.closest(
+                    "[data-range-index]"
+                );
+
+            if (!button) {
+                return;
+            }
+
+            const index =
+                Number(
+                    button.dataset.rangeIndex
+                );
+
+            window.ContentWorkspaceState
+                .removeSelectionRange(
+                    index
+                );
+
+            window.TranscriptSearchController
+                .clearPersistedRangesHighlight();
+
+            window.TranscriptSearchController
+                .highlightPersistedRanges();
+
+            renderSelectedRangesContext();
+        }
+    );
+}
+
+function bindClearRangesAction() {
+
+    const button =
+        document.getElementById(
+            "clearRangesButton"
+        );
+
+    if (!button) {
+        return;
+    }
+
+    button.addEventListener(
+        "click",
+        () => {
+
+            window.ContentWorkspaceState
+                .clearSelectionRanges();
+
+            window.TranscriptSearchController
+                .clearPersistedRangesHighlight();
+
+            renderSelectedRangesContext();
+        }
+    );
 }
 
 function renderTranscriptContent(
@@ -529,5 +638,9 @@ window.TranscriptRenderer = {
 
     renderSelectedSegmentContext,
 
-    renderSelectedRangesContext
+    renderSelectedRangesContext,
+
+    bindRangeActions,
+
+    bindClearRangesAction
 };

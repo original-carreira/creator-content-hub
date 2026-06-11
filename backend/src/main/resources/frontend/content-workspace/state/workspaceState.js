@@ -79,6 +79,26 @@ function addSelectionRange(
     });
 }
 
+function removeSelectionRange(index) {
+
+    if (
+        index < 0 ||
+        index >= workspaceState.selectionRanges.length
+    ) {
+        return;
+    }
+
+    workspaceState.selectionRanges.splice(
+        index,
+        1
+    );
+}
+
+function clearSelectionRanges() {
+
+    workspaceState.selectionRanges.length = 0;
+}
+
 function setTranscriptSearchTerm(searchTerm) {
 
     workspaceState.transcriptSearch.searchTerm =
@@ -121,6 +141,10 @@ window.ContentWorkspaceState = {
     setPendingRangeStart,
 
     addSelectionRange,
+
+    removeSelectionRange,
+
+    clearSelectionRanges,
 
     setTranscriptSearchTerm,
 

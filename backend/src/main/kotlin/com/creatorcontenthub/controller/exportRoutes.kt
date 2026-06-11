@@ -1,6 +1,7 @@
 package com.creatorcontenthub.controller
 
 import com.creatorcontenthub.application.dto.ExportTextRequest
+import com.creatorcontenthub.application.dto.RangeExportRequest
 import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.application.usecase.ExportTextUseCase
 import com.creatorcontenthub.infrastructure.http.respondError
@@ -17,6 +18,25 @@ import java.io.FileOutputStream
 import io.ktor.server.response.respondFile
 import org.apache.poi.xwpf.usermodel.XWPFDocument
 import org.apache.poi.xwpf.usermodel.ParagraphAlignment
+
+private fun formatTimestamp(
+    seconds: Double
+): String {
+
+    val totalSeconds =
+        seconds.toInt()
+
+    val minutes =
+        totalSeconds / 60
+
+    val remainingSeconds =
+        totalSeconds % 60
+
+    return "%02d:%02d".format(
+        minutes,
+        remainingSeconds
+    )
+}
 
 fun Route.exportRoutes(
     exportUseCase: ExportTextUseCase,
@@ -56,6 +76,138 @@ fun Route.exportRoutes(
         call.respondText(
             text = result,
             contentType = ContentType.Text.Plain.withCharset(Charsets.UTF_8)
+        )
+    }
+
+    post("/jobs/{jobId}/export/ranges/txt") {
+
+        val jobId = call.parameters["jobId"]
+
+        if (jobId.isNullOrBlank()) {
+            call.respondError(
+                HttpStatusCode.BadRequest,
+                "jobId is required"
+            )
+            return@post
+        }
+
+        val request = call.receive<RangeExportRequest>()
+
+        if (request.ranges.isEmpty()) {
+            call.respondError(
+                HttpStatusCode.BadRequest,
+                "ranges are required"
+            )
+            return@post
+        }
+
+        val job = jobRepository.findById(jobId)
+
+        if (job == null) {
+            call.respondError(
+                HttpStatusCode.NotFound,
+                "Job not found"
+            )
+            return@post
+        }
+
+        val transcript = job.transcript
+
+        if (transcript == null) {
+            call.respondError(
+                HttpStatusCode.NotFound,
+                "Transcript not available"
+            )
+            return@post
+        }
+
+        if (
+            request.ranges.any { range ->
+
+                range.startIndex < 0 ||
+                        range.endIndex < 0 ||
+                        range.startIndex > range.endIndex ||
+                        range.endIndex >= transcript.segments.size
+            }
+        ) {
+            call.respondError(
+                HttpStatusCode.BadRequest,
+                "Invalid range indexes"
+            )
+            return@post
+        }
+
+        val content =
+            request.ranges.mapIndexed { index, range ->
+
+                val selectedSegments =
+                    transcript.segments
+                        .subList(
+                            range.startIndex,
+                            range.endIndex + 1
+                        )
+
+                val start =
+                    selectedSegments.first().start
+
+                val end =
+                    selectedSegments.last().end
+
+                val duration =
+                    end - start
+
+                val text =
+                    selectedSegments.joinToString(" ") {
+                        it.text.trim()
+                    }
+
+                """
+========================================
+
+CORTE #${index + 1}
+Início: ${formatTimestamp(start)} | Fim: ${formatTimestamp(end)} | Duração: ${formatTimestamp(duration)}
+
+$text
+
+----------------------------------------
+"""
+            }.joinToString("\n")
+
+        val exportBaseFilename =
+            job.title
+                ?.trim()
+                ?.replace(Regex("[\\\\/:*?\"<>|]"), "")
+                ?.replace(Regex("[“”‘’]"), "")
+                ?.replace(Regex("[\\p{So}\\p{Cn}]"), "")
+                ?.replace(Regex("(^|\\s)_([^_]+)_(?=\\s|$)"), "$1$2")
+                ?.replace(Regex("^[_\\-.\\s]+"), "")
+                ?.replace(Regex("[_\\-.\\s]+$"), "")
+                ?.replace(Regex("\\s+"), " ")
+                ?.ifBlank { null }
+                ?: "job_$jobId"
+
+        val filename =
+            "${exportBaseFilename} - Cortes.txt"
+
+        call.response.headers.append(
+            HttpHeaders.ContentDisposition,
+            ContentDisposition.Attachment
+                .withParameter(
+                    ContentDisposition.Parameters.FileName,
+                    filename
+                )
+                .withParameter(
+                    "filename*",
+                    "UTF-8''$filename"
+                )
+                .toString()
+        )
+
+        call.respondText(
+            text = content,
+            contentType =
+                ContentType.Text.Plain
+                    .withCharset(Charsets.UTF_8)
         )
     }
 
