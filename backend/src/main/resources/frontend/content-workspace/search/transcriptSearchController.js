@@ -427,6 +427,24 @@ function highlightPendingRangeStart(index) {
         "2px";
 }
 
+function clearPersistedRangesHighlight() {
+
+    getTranscriptSegments()
+        .forEach(
+            (segment) => {
+
+                if (
+                    segment.style.backgroundColor ===
+                    "rgb(254, 243, 199)"
+                ) {
+
+                    segment.style.backgroundColor =
+                        "";
+                }
+            }
+        );
+}
+
 function highlightPersistedRanges() {
 
     const ranges =
@@ -598,5 +616,7 @@ function bindSegmentNavigation() {
 
 window.TranscriptSearchController = {
 
-    bindTranscriptSearch
+    bindTranscriptSearch,
+    clearPersistedRangesHighlight,
+    highlightPersistedRanges
 };

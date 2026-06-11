@@ -179,6 +179,12 @@
                 workspaceStateApi
             );
 
+        window.TranscriptRenderer
+            .bindRangeActions();
+
+        window.TranscriptRenderer
+            .bindClearRangesAction();
+
         window.WorkspaceExportController
             .bindWorkspaceExports(
                 workspaceStateApi
