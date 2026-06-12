@@ -25,7 +25,9 @@
 
 <script src="content-workspace/renderers/workspaceHeaderRenderer.js"></script>
 
-<script src="content-workspace/renderers/assetWorkspaceRenderer.js"></script>
+<script src="content-workspace/renderers/videoWorkspaceRenderer.js"></script>
+
+<script src="content-workspace/renderers/audioWorkspaceRenderer.js"></script>
 
 <script src="content-workspace/renderers/workspaceToolbarRenderer.js"></script>
 
@@ -154,9 +156,11 @@
         container.innerHTML = `
             ${window.WorkspaceHeaderRenderer.renderJobHeader(job)}
 
-            ${window.AssetWorkspaceRenderer.renderAssetWorkspace(
-                workspaceStateApi.workspaceState.assetCollection
-            )}
+            ${window.VideoWorkspaceRenderer.renderVideoWorkspace(job)}
+
+            ${window.AudioWorkspaceRenderer.renderAudioWorkspace(
+            workspaceStateApi.workspaceState.assetCollection
+        )}
 
             ${window.WorkspaceToolbarRenderer.renderWorkspaceToolbar()}
 
