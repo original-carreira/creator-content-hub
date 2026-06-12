@@ -1,31 +1,37 @@
-function renderAssetWorkspace(assetCollection) {
+function renderAudioWorkspace(assetCollection) {
 
     const assets =
-        assetCollection?.assets || [];
+        (assetCollection?.assets || [])
+            .filter(asset =>
+                asset.assetId === "mp3"
+            );
 
     const assetItems = assets
         .map(asset => {
 
             const actionItems =
                 (asset.actions || [])
+                    .filter(action =>
+                        action.actionId === "download"
+                    )
                     .map(action => {
                         return `
-                            <button
-                                type="button"
-                                data-asset-id="${asset.assetId}"
-                                data-action-id="${action.actionId}"
-                                style="
-                                    padding:4px 10px;
-                                    border:1px solid #ddd;
-                                    border-radius:6px;
-                                    background:#fff;
-                                    cursor:pointer;
-                                    font-size:12px;
-                                "
-                            >
-                                ${action.label}
-                            </button>
-                        `;
+                <button
+                    type="button"
+                    data-asset-id="${asset.assetId}"
+                    data-action-id="${action.actionId}"
+                    style="
+                        padding:4px 10px;
+                        border:1px solid #ddd;
+                        border-radius:6px;
+                        background:#fff;
+                        cursor:pointer;
+                        font-size:12px;
+                    "
+                >
+                    Download MP3
+                </button>
+            `;
                     })
                     .join("");
 
@@ -36,11 +42,6 @@ function renderAssetWorkspace(assetCollection) {
                         border-bottom:1px solid #eee;
                     "
                 >
-
-                    <div>
-                        ${asset.type}
-                    </div>
-
                     <div
                         style="
                             display:flex;
@@ -68,7 +69,7 @@ function renderAssetWorkspace(assetCollection) {
                     margin-bottom:10px;
                 "
             >
-                <strong>Assets Disponíveis</strong>
+                <strong>Audio Workspace</strong>
 
                 <span
                     style="
@@ -76,7 +77,7 @@ function renderAssetWorkspace(assetCollection) {
                         color:#666;
                     "
                 >
-                    ${assets.length} asset(s)
+                    Derived Asset
                 </span>
             </div>
 
@@ -98,7 +99,7 @@ function renderAssetWorkspace(assetCollection) {
                                     font-size:14px;
                                 "
                             >
-                                Nenhum asset disponível.
+                                Nenhum áudio disponível.
                             </div>
                         `
             : `
@@ -120,7 +121,7 @@ function renderAssetWorkspace(assetCollection) {
     `;
 }
 
-window.AssetWorkspaceRenderer = {
+window.AudioWorkspaceRenderer = {
 
-    renderAssetWorkspace
+    renderAudioWorkspace
 };
