@@ -199,6 +199,25 @@
                 workspaceStateApi
             );
 
+        const mediaButton =
+            document.getElementById(
+                "workspaceMediaButton"
+            );
+
+        if (mediaButton) {
+
+            mediaButton.addEventListener(
+                "click",
+                () => {
+
+                    window.open(
+                        `/media.html?jobId=${getJobId()}`,
+                        "_blank"
+                    );
+                }
+            );
+        }
+
         document.getElementById("summary").innerText =
             job.summary || "(vazio)";
     }
