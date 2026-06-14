@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <title>Media Center</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="container">
+
+    <h2>Media Center</h2>
+
+    <div
+       style="
+            margin-bottom:20px;
+            color:#666;
+       "
+    >
+       Gerenciamento e Operações de Mídia
+    </div>
+
+    <div id="mediaContent">
+        Carregando...
+    </div>
+
+</div>
+
+<script src="content-workspace/renderers/videoWorkspaceRenderer.js"></script>
+
+<script>
+
+    function getJobId() {
+
+        const params =
+            new URLSearchParams(
+                window.location.search
+            );
+
+        return params.get("jobId");
+    }
+
+    async function loadJob() {
+
+        const jobId =
+            getJobId();
+
+        if (!jobId) {
+
+            document.getElementById(
+                "mediaContent"
+            ).innerText =
+                "Job inválido";
+
+            return;
+        }
+
+        try {
+
+            const response =
+                await fetch(
+                    `/jobs/${jobId}`
+                );
+
+            const payload =
+                await response.json();
+
+            const job =
+                payload.data;
+
+            renderMediaCenter(job);
+
+        } catch (error) {
+
+            console.error(
+                "[MEDIA CENTER LOAD ERROR]",
+                error
+            );
+
+            document.getElementById(
+                "mediaContent"
+            ).innerText =
+                "Erro ao carregar Media Center";
+        }
+    }
+
+    function renderMediaCenter(job) {
+
+        document.getElementById(
+            "mediaContent"
+        ).innerHTML =
+            window.VideoWorkspaceRenderer
+                .renderVideoWorkspace(
+                    job
+                );
+    }
+
+    loadJob();
+
+</script>
+
+</body>
+</html>
