@@ -11,6 +11,7 @@ import com.creatorcontenthub.application.pipeline.TranscriptionStep
 import com.creatorcontenthub.application.pipeline.SummaryStep
 import com.creatorcontenthub.application.pipeline.JobProcessor
 import com.creatorcontenthub.application.service.ExistingJobResolver
+import com.creatorcontenthub.application.usecase.CreateMediaNavigationContextUseCase
 import com.creatorcontenthub.controller.healthRoutes
 import com.creatorcontenthub.controller.textRoutes
 import com.creatorcontenthub.controller.exportRoutes
@@ -22,6 +23,7 @@ import com.creatorcontenthub.infrastructure.http.requestId
 import com.creatorcontenthub.infrastructure.http.duration
 import com.creatorcontenthub.application.usecase.ProcessTextUseCase
 import com.creatorcontenthub.application.usecase.ExportTextUseCase
+import com.creatorcontenthub.application.usecase.GetMediaNavigationContextUseCase
 import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
 import com.creatorcontenthub.application.usecase.ListJobsUseCase
 import com.creatorcontenthub.application.usecase.ResumeJobUseCase
@@ -34,6 +36,7 @@ import com.creatorcontenthub.controller.healthDbRoute
 import com.creatorcontenthub.controller.jobEventsRoutes
 import com.creatorcontenthub.controller.jobMutationRoutes
 import com.creatorcontenthub.controller.jobRoutes
+import com.creatorcontenthub.controller.mediaNavigationRoutes
 import com.creatorcontenthub.controller.searchRoutes
 import com.creatorcontenthub.infrastructure.adapter.FFmpegAudioGenerationAdapter
 import com.creatorcontenthub.infrastructure.adapter.YtDlpVideoIngestionAdapter
@@ -58,6 +61,7 @@ import com.creatorcontenthub.infrastructure.metrics.PrometheusRegistry
 import com.creatorcontenthub.infrastructure.metrics.SearchMetrics
 import com.creatorcontenthub.infrastructure.storage.FileStorageService
 import com.creatorcontenthub.infrastructure.adapter.PostgresJobQueueRepository
+import com.creatorcontenthub.infrastructure.adapter.PostgresMediaNavigationContextRepository
 import com.creatorcontenthub.infrastructure.runtime.RuntimeEventBus
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.serialization.kotlinx.json.*
@@ -151,6 +155,11 @@ fun Application.module() {
 
     val jobRepository = PostgresJobRepository(dataSource)
 
+    val mediaNavigationContextRepository =
+        PostgresMediaNavigationContextRepository(
+            dataSource
+        )
+
     val jobQueueRepository = PostgresJobQueueRepository(dataSource)
 
     val deadLetterQueueRepository =
@@ -187,6 +196,16 @@ fun Application.module() {
         searchMetrics = searchMetrics
     )
     val listJobsUseCase = ListJobsUseCase(jobQueryRepository)
+
+    val getMediaNavigationContextUseCase =
+        GetMediaNavigationContextUseCase(
+            mediaNavigationContextRepository
+        )
+
+    val createMediaNavigationContextUseCase =
+        CreateMediaNavigationContextUseCase(
+            mediaNavigationContextRepository
+        )
 
     val ingestionMetrics = IngestionMetrics()
 
@@ -363,7 +382,9 @@ fun Application.module() {
         resumeJobUseCase,
         deleteJobUseCase,
         deleteJobsUseCase,
-        runtimeEventBus
+        runtimeEventBus,
+        getMediaNavigationContextUseCase,
+        createMediaNavigationContextUseCase
     )
 }
 
@@ -429,7 +450,9 @@ fun Application.configureRouting(
     resumeJobUseCase: ResumeJobUseCase,
     deleteJobUseCase: DeleteJobUseCase,
     deleteJobsUseCase: DeleteJobsUseCase,
-    runtimeEventBus: RuntimeEventBus
+    runtimeEventBus: RuntimeEventBus,
+    getMediaNavigationContextUseCase: GetMediaNavigationContextUseCase,
+    createMediaNavigationContextUseCase: CreateMediaNavigationContextUseCase
 
 ) {
     routing {
@@ -439,6 +462,7 @@ fun Application.configureRouting(
         exportRoutes(exportTextUseCase, jobRepository)
         searchRoutes(searchJobsUseCase)
         jobRoutes(jobRepository)
+        mediaNavigationRoutes(getMediaNavigationContextUseCase, createMediaNavigationContextUseCase)
         jobMutationRoutes(deleteJobUseCase, deleteJobsUseCase)
         jobEventsRoutes(runtimeEventBus)
 

@@ -38,6 +38,23 @@ private fun formatTimestamp(
     )
 }
 
+private fun sanitizeFilename(
+    title: String?,
+    jobId: String
+): String{
+    return title
+        ?.trim()
+        ?.replace(Regex("[\\\\/:*?\"<>|]"), "")
+        ?.replace(Regex("[“”‘’]"), "")
+        ?.replace(Regex("[\\p{So}\\p{Cn}]"), "")
+        ?.replace(Regex("(^|\\s)_([^_]+)_(?=\\s|$)"), "$1$2")
+        ?.replace(Regex("^[_\\-.\\s]+"), "")
+        ?.replace(Regex("[_\\-.\\s]+$"), "")
+        ?.replace(Regex("\\s+"), " ")
+        ?.ifBlank { null }
+        ?: "job_$jobId"
+}
+
 fun Route.exportRoutes(
     exportUseCase: ExportTextUseCase,
     jobRepository: JobRepository
@@ -174,17 +191,10 @@ $text
             }.joinToString("\n")
 
         val exportBaseFilename =
-            job.title
-                ?.trim()
-                ?.replace(Regex("[\\\\/:*?\"<>|]"), "")
-                ?.replace(Regex("[“”‘’]"), "")
-                ?.replace(Regex("[\\p{So}\\p{Cn}]"), "")
-                ?.replace(Regex("(^|\\s)_([^_]+)_(?=\\s|$)"), "$1$2")
-                ?.replace(Regex("^[_\\-.\\s]+"), "")
-                ?.replace(Regex("[_\\-.\\s]+$"), "")
-                ?.replace(Regex("\\s+"), " ")
-                ?.ifBlank { null }
-                ?: "job_$jobId"
+            sanitizeFilename(
+                title = job.title,
+                jobId = jobId
+            )
 
         val filename =
             "${exportBaseFilename} - Cortes.txt"
@@ -254,17 +264,10 @@ $text
     """.trimIndent()
 
         val exportBaseFilename =
-            job.title
-                ?.trim()
-                ?.replace(Regex("[\\\\/:*?\"<>|]"), "")
-                ?.replace(Regex("[“”‘’]"), "")
-                ?.replace(Regex("[\\p{So}\\p{Cn}]"), "")
-                ?.replace(Regex("(^|\\s)_([^_]+)_(?=\\s|$)"), "$1$2")
-                ?.replace(Regex("^[_\\-.\\s]+"), "")
-                ?.replace(Regex("[_\\-.\\s]+$"), "")
-                ?.replace(Regex("\\s+"), " ")
-                ?.ifBlank { null }
-                ?: "job_$jobId"
+            sanitizeFilename(
+                title = job.title,
+                jobId = jobId
+            )
 
         val filename =
             "${exportBaseFilename}.txt"
@@ -308,17 +311,10 @@ $text
         }
 
         val exportBaseFilename =
-            job.title
-                ?.trim()
-                ?.replace(Regex("[\\\\/:*?\"<>|]"), "")
-                ?.replace(Regex("[“”‘’]"), "")
-                ?.replace(Regex("[\\p{So}\\p{Cn}]"), "")
-                ?.replace(Regex("(^|\\s)_([^_]+)_(?=\\s|$)"), "$1$2")
-                ?.replace(Regex("^[_\\-.\\s]+"), "")
-                ?.replace(Regex("[_\\-.\\s]+$"), "")
-                ?.replace(Regex("\\s+"), " ")
-                ?.ifBlank { null }
-                ?: "job_$jobId"
+            sanitizeFilename(
+                title = job.title,
+                jobId = jobId
+            )
 
         val transcriptionPath = job.transcriptionPath
         val summaryPath = job.summaryPath
