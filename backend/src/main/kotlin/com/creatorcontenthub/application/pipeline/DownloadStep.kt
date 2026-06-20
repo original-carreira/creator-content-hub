@@ -46,14 +46,11 @@ class DownloadStep(
             updated
         )
 
-        result.videoPath?.let {
-
-            assetRegistrationService.register(
-                jobId = jobId,
-                assetType = AssetType.VIDEO,
-                storagePath = it
-            )
-        }
+        assetRegistrationService.register(
+            jobId = jobId,
+            assetType = AssetType.VIDEO,
+            storagePath = result.videoPath
+        )
 
         return updated
     }
