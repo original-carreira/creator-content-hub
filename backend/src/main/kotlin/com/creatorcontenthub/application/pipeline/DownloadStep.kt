@@ -3,12 +3,15 @@ package com.creatorcontenthub.application.pipeline
 import com.creatorcontenthub.application.dto.IngestionResult
 import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.application.port.VideoIngestionPort
+import com.creatorcontenthub.application.service.AssetRegistrationService
+import com.creatorcontenthub.domain.model.AssetType
 import com.creatorcontenthub.domain.model.JobStage
 import com.creatorcontenthub.domain.model.JobState
 
 class DownloadStep(
     private val ingestionPort: VideoIngestionPort,
-    private val jobRepository: JobRepository
+    private val jobRepository: JobRepository,
+    private val assetRegistrationService: AssetRegistrationService
 ) : PipelineStep {
 
     override val supportedStage = JobStage.CREATED
@@ -38,7 +41,16 @@ class DownloadStep(
             title = result.title
         )
 
-        jobRepository.update(jobId, updated)
+        jobRepository.update(
+            jobId,
+            updated
+        )
+
+        assetRegistrationService.register(
+            jobId = jobId,
+            assetType = AssetType.VIDEO,
+            storagePath = result.videoPath
+        )
 
         return updated
     }

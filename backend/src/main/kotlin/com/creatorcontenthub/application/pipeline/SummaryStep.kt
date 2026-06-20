@@ -3,6 +3,8 @@ package com.creatorcontenthub.application.pipeline
 import com.creatorcontenthub.application.dto.SummarizationResult
 import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.application.port.SummarizationPort
+import com.creatorcontenthub.application.service.AssetRegistrationService
+import com.creatorcontenthub.domain.model.AssetType
 import com.creatorcontenthub.domain.model.JobStage
 import com.creatorcontenthub.domain.model.JobState
 import com.creatorcontenthub.domain.model.JobStatus
@@ -11,7 +13,8 @@ import com.creatorcontenthub.infrastructure.storage.FileStorageService
 class SummaryStep(
     private val summarizationPort: SummarizationPort,
     private val jobRepository: JobRepository,
-    private val fileStorageService: FileStorageService
+    private val fileStorageService: FileStorageService,
+    private val assetRegistrationService: AssetRegistrationService
 ) : PipelineStep {
 
     override val supportedStage = JobStage.TRANSCRIBED
@@ -48,7 +51,16 @@ class SummaryStep(
             summaryCompletedAt = now
         )
 
-        jobRepository.update(jobId, updated)
+        jobRepository.update(
+            jobId,
+            updated
+        )
+
+        assetRegistrationService.register(
+            jobId = jobId,
+            assetType = AssetType.SUMMARY,
+            storagePath = summaryPath
+        )
 
         return updated
     }

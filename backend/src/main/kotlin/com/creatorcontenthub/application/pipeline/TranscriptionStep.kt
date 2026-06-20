@@ -3,6 +3,8 @@ package com.creatorcontenthub.application.pipeline
 import com.creatorcontenthub.application.dto.TranscriptionResult
 import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.application.port.TranscriptionPort
+import com.creatorcontenthub.application.service.AssetRegistrationService
+import com.creatorcontenthub.domain.model.AssetType
 import com.creatorcontenthub.domain.model.JobStage
 import com.creatorcontenthub.domain.model.JobState
 import com.creatorcontenthub.domain.model.Transcript
@@ -11,7 +13,8 @@ import com.creatorcontenthub.infrastructure.storage.FileStorageService
 class TranscriptionStep(
     private val transcriptionPort: TranscriptionPort,
     private val jobRepository: JobRepository,
-    private val fileStorageService: FileStorageService
+    private val fileStorageService: FileStorageService,
+    private val assetRegistrationService: AssetRegistrationService
 ) : PipelineStep {
 
     override val supportedStage = JobStage.AUDIO_GENERATED
@@ -55,7 +58,16 @@ class TranscriptionStep(
             transcriptionCompletedAt = now
         )
 
-        jobRepository.update(jobId, updated)
+        jobRepository.update(
+            jobId,
+            updated
+        )
+
+        assetRegistrationService.register(
+            jobId = jobId,
+            assetType = AssetType.TRANSCRIPT,
+            storagePath = transcriptionPath
+        )
 
         return updated
     }

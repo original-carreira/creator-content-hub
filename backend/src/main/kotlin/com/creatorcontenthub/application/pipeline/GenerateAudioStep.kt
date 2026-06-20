@@ -2,12 +2,15 @@ package com.creatorcontenthub.application.pipeline
 
 import com.creatorcontenthub.application.port.AudioGenerationPort
 import com.creatorcontenthub.application.port.JobRepository
+import com.creatorcontenthub.application.service.AssetRegistrationService
+import com.creatorcontenthub.domain.model.AssetType
 import com.creatorcontenthub.domain.model.JobStage
 import com.creatorcontenthub.domain.model.JobState
 
 class GenerateAudioStep(
     private val audioGenerationPort: AudioGenerationPort,
-    private val jobRepository: JobRepository
+    private val jobRepository: JobRepository,
+    private val assetRegistrationService: AssetRegistrationService
 ) : PipelineStep {
 
     override val supportedStage = JobStage.DOWNLOADED
@@ -39,6 +42,12 @@ class GenerateAudioStep(
         jobRepository.update(
             jobId,
             updated
+        )
+
+        assetRegistrationService.register(
+            jobId = jobId,
+            assetType = AssetType.AUDIO,
+            storagePath = audioPath
         )
 
         return updated
