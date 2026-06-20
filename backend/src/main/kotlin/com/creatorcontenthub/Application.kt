@@ -10,6 +10,7 @@ import com.creatorcontenthub.application.pipeline.GenerateAudioStep
 import com.creatorcontenthub.application.pipeline.TranscriptionStep
 import com.creatorcontenthub.application.pipeline.SummaryStep
 import com.creatorcontenthub.application.pipeline.JobProcessor
+import com.creatorcontenthub.application.service.AssetRegistrationService
 import com.creatorcontenthub.application.service.ExistingJobResolver
 import com.creatorcontenthub.application.usecase.CreateMediaNavigationContextUseCase
 import com.creatorcontenthub.controller.healthRoutes
@@ -44,6 +45,7 @@ import com.creatorcontenthub.infrastructure.adapter.WhisperTranscriptionAdapter
 import com.creatorcontenthub.infrastructure.adapter.FallbackSummarizationAdapter
 import com.creatorcontenthub.infrastructure.adapter.FallbackTextProcessorAdapter
 import com.creatorcontenthub.infrastructure.adapter.LocalTextProcessorAdapter
+import com.creatorcontenthub.infrastructure.adapter.PostgresAssetRepository
 import com.creatorcontenthub.infrastructure.adapter.PostgresDeadLetterQueueRepository
 import com.creatorcontenthub.infrastructure.adapter.PostgresJobQueryRepository
 import com.creatorcontenthub.infrastructure.adapter.PostgresJobRepository
@@ -160,6 +162,16 @@ fun Application.module() {
             dataSource
         )
 
+    val assetRepository =
+        PostgresAssetRepository(
+            dataSource
+        )
+
+    val assetRegistrationService =
+        AssetRegistrationService(
+            assetRepository
+        )
+
     val jobQueueRepository = PostgresJobQueueRepository(dataSource)
 
     val deadLetterQueueRepository =
@@ -255,24 +267,28 @@ fun Application.module() {
 
     val downloadStep = DownloadStep(
         ingestionPort = videoIngestionAdapter,
-        jobRepository = jobRepository
+        jobRepository = jobRepository,
+        assetRegistrationService = assetRegistrationService
     )
 
     val generateAudioStep = GenerateAudioStep(
         audioGenerationPort = audioGenerationAdapter,
-        jobRepository = jobRepository
+        jobRepository = jobRepository,
+        assetRegistrationService = assetRegistrationService
     )
 
     val transcriptionStep = TranscriptionStep(
         transcriptionPort = transcriptionAdapter,
         jobRepository = jobRepository,
-        fileStorageService = fileStorageService
+        fileStorageService = fileStorageService,
+        assetRegistrationService = assetRegistrationService
     )
 
     val summaryStep = SummaryStep(
         summarizationPort = summarizationAdapter,
         jobRepository = jobRepository,
-        fileStorageService = fileStorageService
+        fileStorageService = fileStorageService,
+        assetRegistrationService = assetRegistrationService
     )
 
     val finalizeJobStep = FinalizeJobStep(
