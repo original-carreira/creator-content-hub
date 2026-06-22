@@ -59,16 +59,45 @@
 
             const response =
                 await fetch(
-                    `/jobs/${jobId}`
+                    `/jobs/${jobId}/assets`
                 );
 
             const payload =
                 await response.json();
 
-            const job =
+            const assets =
                 payload.data;
 
-            renderMediaCenter(job);
+            const videoAsset =
+                assets.find(
+                    asset =>
+                        asset.assetType === "VIDEO"
+                );
+
+            let mediaNavigationContext =
+                null;
+
+            if (videoAsset) {
+
+                const contextResponse =
+                    await fetch(
+                        `/media-navigation-contexts/by-asset/${videoAsset.assetId}`
+                    );
+
+                if (contextResponse.ok) {
+
+                    const contextPayload =
+                        await contextResponse.json();
+
+                    mediaNavigationContext =
+                        contextPayload.data;
+                }
+            }
+
+            renderMediaCenter(
+                assets,
+                mediaNavigationContext
+            );
 
         } catch (error) {
 
@@ -84,14 +113,18 @@
         }
     }
 
-    function renderMediaCenter(job) {
+    function renderMediaCenter(
+        assets,
+        mediaNavigationContext
+    ) {
 
         document.getElementById(
             "mediaContent"
         ).innerHTML =
             window.VideoWorkspaceRenderer
                 .renderVideoWorkspace(
-                    job
+                    assets,
+                    mediaNavigationContext
                 );
     }
 

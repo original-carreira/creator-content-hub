@@ -21,4 +21,9 @@ interface MediaNavigationContextRepository {
     fun findById(
         contextId: String
     ): MediaNavigationContext?
+
+    fun findByAssetId(
+        assetId: String
+    ): MediaNavigationContext?
+
 }
