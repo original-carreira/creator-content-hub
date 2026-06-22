@@ -1,10 +1,13 @@
 package com.creatorcontenthub.controller
 
+import com.creatorcontenthub.application.dto.AssetResponse
 import com.creatorcontenthub.application.dto.JobResponse
 import com.creatorcontenthub.application.dto.TranscriptResponse
 import com.creatorcontenthub.application.dto.TranscriptSegmentResponse
+import com.creatorcontenthub.application.port.AssetRepository
 import com.creatorcontenthub.application.port.JobRepository
-import com.creatorcontenthub.application.service.AssetResolver
+import com.creatorcontenthub.domain.model.AssetType
+import com.creatorcontenthub.infrastructure.files.FilenameSanitizer
 import com.creatorcontenthub.infrastructure.http.respondError
 import com.creatorcontenthub.infrastructure.http.respondSuccess
 import io.ktor.http.HttpHeaders
@@ -16,11 +19,12 @@ import io.ktor.server.response.respondFile
 import java.io.File
 import org.slf4j.LoggerFactory
 
-fun Route.jobRoutes(repository: JobRepository) {
+fun Route.jobRoutes(
+    repository: JobRepository,
+    assetRepository: AssetRepository
+) {
 
     val logger = LoggerFactory.getLogger("JobRoutes")
-
-    val assetResolver = AssetResolver()
 
     get("/jobs/{jobId}") {
 
@@ -54,6 +58,37 @@ fun Route.jobRoutes(repository: JobRepository) {
         )
 
         call.respondSuccess(response)
+    }
+
+    get("/jobs/{jobId}/assets") {
+
+        val jobId = call.parameters["jobId"]
+
+        if (jobId.isNullOrBlank()) {
+            call.respondError(
+                HttpStatusCode.BadRequest,
+                "jobId is required"
+            )
+            return@get
+        }
+
+        val assets =
+            assetRepository.findByJobId(
+                jobId
+            )
+
+        val response =
+            assets.map {
+                AssetResponse(
+                    assetId = it.assetId,
+                    assetType = it.assetType.name,
+                    createdAt = it.createdAt
+                )
+            }
+
+        call.respondSuccess(
+            response
+        )
     }
 
     get("/jobs/{jobId}/download/transcription") {
@@ -199,27 +234,66 @@ fun Route.jobRoutes(repository: JobRepository) {
             return@get
         }
 
-        val job = repository.findById(jobId)
+        val asset =
+            assetRepository.findById(
+                assetId
+            )
 
-        if (job == null) {
-            call.respondError(HttpStatusCode.NotFound, "Job not found")
-            return@get
-        }
-
-        val resolution = assetResolver.resolve(
-            assetId = assetId,
-            job = job
-        )
-
-        if (resolution == null) {
+        if (asset == null) {
             call.respondError(
                 HttpStatusCode.NotFound,
-                "Asset not available"
+                "Asset not found"
             )
             return@get
         }
 
-        val file = File(resolution.filePath)
+        if (asset.jobId != jobId) {
+            call.respondError(
+                HttpStatusCode.NotFound,
+                "Asset not found"
+            )
+            return@get
+        }
+
+        val job =
+            repository.findById(
+                jobId
+            )
+
+        if (job == null) {
+            call.respondError(
+                HttpStatusCode.NotFound,
+                "Job not found"
+            )
+            return@get
+        }
+
+        val exportBaseFilename =
+            FilenameSanitizer.sanitizeFilename(
+                title = job.title,
+                jobId = jobId
+            )
+
+        val downloadFilename =
+            when (asset.assetType) {
+
+                AssetType.VIDEO ->
+                    "$exportBaseFilename.mp4"
+
+                AssetType.AUDIO ->
+                    "$exportBaseFilename.mp3"
+
+                AssetType.TRANSCRIPT ->
+                    "$exportBaseFilename - Transcrição.txt"
+
+                AssetType.SUMMARY ->
+                    "$exportBaseFilename - Resumo.txt"
+            }
+
+        val file =
+            File(
+                asset.storagePath
+            )
 
         if (!file.exists()) {
             call.respondError(
@@ -231,7 +305,7 @@ fun Route.jobRoutes(repository: JobRepository) {
 
         call.response.header(
             HttpHeaders.ContentDisposition,
-            "attachment; filename=\"${resolution.fileName}\""
+            "attachment; filename=\"$downloadFilename\""
         )
 
         call.respondFile(file)

@@ -1,6 +1,15 @@
-function renderVideoWorkspace(job) {
+function renderVideoWorkspace(
+    assets,
+    mediaNavigationContext
+) {
 
-    if (!job?.videoAvailable) {
+    const videoAsset =
+        assets?.find(
+            asset =>
+                asset.assetType === "VIDEO"
+        );
+
+    if (!videoAsset) {
         return "";
     }
 
@@ -16,6 +25,45 @@ function renderVideoWorkspace(job) {
                 "
             >
                 <strong>Video Workspace</strong>
+                
+                <div
+                    style="
+                        margin-bottom:12px;
+                        padding:12px;
+                        border:1px solid #ddd;
+                        border-radius:8px;
+                        background:#fafafa;
+                    "
+                >
+                    <div
+                        style="
+                            font-weight:bold;
+                            margin-bottom:6px;
+                        "
+                    >
+                        Seleções Salvas
+                    </div>
+
+                    ${
+                        mediaNavigationContext
+                            ? `
+                                <div>
+                                    Seleção:
+                                    ${mediaNavigationContext.name}
+                                </div>
+
+                                <div>
+                                    ${mediaNavigationContext.ranges.length}
+                                    cortes registrados
+                                </div>
+                            `
+                            : `
+                                <div>
+                                    Nenhuma seleção criada para este vídeo.
+                                </div>
+                            `
+                    }
+                </div>
 
                 <span
                     style="
@@ -49,7 +97,9 @@ function renderVideoWorkspace(job) {
                             window.location.href=
                             '/jobs/' +
                             new URLSearchParams(window.location.search).get('jobId') +
-                            '/assets/video/download'
+                            '/assets/' +
+                            '${videoAsset.assetId}' +
+                            '/download'
                         "
                     >
                         Download Video

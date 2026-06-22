@@ -4,6 +4,7 @@ import com.creatorcontenthub.application.dto.ExportTextRequest
 import com.creatorcontenthub.application.dto.RangeExportRequest
 import com.creatorcontenthub.application.port.JobRepository
 import com.creatorcontenthub.application.usecase.ExportTextUseCase
+import com.creatorcontenthub.infrastructure.files.FilenameSanitizer
 import com.creatorcontenthub.infrastructure.http.respondError
 import org.slf4j.LoggerFactory
 import io.ktor.http.HttpHeaders
@@ -36,23 +37,6 @@ private fun formatTimestamp(
         minutes,
         remainingSeconds
     )
-}
-
-private fun sanitizeFilename(
-    title: String?,
-    jobId: String
-): String{
-    return title
-        ?.trim()
-        ?.replace(Regex("[\\\\/:*?\"<>|]"), "")
-        ?.replace(Regex("[“”‘’]"), "")
-        ?.replace(Regex("[\\p{So}\\p{Cn}]"), "")
-        ?.replace(Regex("(^|\\s)_([^_]+)_(?=\\s|$)"), "$1$2")
-        ?.replace(Regex("^[_\\-.\\s]+"), "")
-        ?.replace(Regex("[_\\-.\\s]+$"), "")
-        ?.replace(Regex("\\s+"), " ")
-        ?.ifBlank { null }
-        ?: "job_$jobId"
 }
 
 fun Route.exportRoutes(
@@ -191,7 +175,7 @@ $text
             }.joinToString("\n")
 
         val exportBaseFilename =
-            sanitizeFilename(
+            FilenameSanitizer.sanitizeFilename(
                 title = job.title,
                 jobId = jobId
             )
@@ -264,7 +248,7 @@ $text
     """.trimIndent()
 
         val exportBaseFilename =
-            sanitizeFilename(
+            FilenameSanitizer.sanitizeFilename(
                 title = job.title,
                 jobId = jobId
             )
@@ -311,7 +295,7 @@ $text
         }
 
         val exportBaseFilename =
-            sanitizeFilename(
+            FilenameSanitizer.sanitizeFilename(
                 title = job.title,
                 jobId = jobId
             )

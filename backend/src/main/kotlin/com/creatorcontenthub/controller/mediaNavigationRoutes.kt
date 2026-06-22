@@ -2,6 +2,7 @@ package com.creatorcontenthub.controller
 
 import com.creatorcontenthub.application.dto.CreateMediaNavigationContextRequest
 import com.creatorcontenthub.application.usecase.CreateMediaNavigationContextUseCase
+import com.creatorcontenthub.application.usecase.GetMediaNavigationContextByAssetUseCase
 import com.creatorcontenthub.application.usecase.GetMediaNavigationContextUseCase
 import com.creatorcontenthub.infrastructure.http.respondError
 import com.creatorcontenthub.infrastructure.http.respondSuccess
@@ -12,6 +13,7 @@ import io.ktor.server.routing.*
 
 fun Route.mediaNavigationRoutes(
     getMediaNavigationContextUseCase: GetMediaNavigationContextUseCase,
+    getMediaNavigationContextByAssetUseCase: GetMediaNavigationContextByAssetUseCase,
     createMediaNavigationContextUseCase: CreateMediaNavigationContextUseCase
 ) {
 
@@ -59,5 +61,40 @@ fun Route.mediaNavigationRoutes(
         }
 
         call.respondSuccess(response)
+    }
+
+    get("/media-navigation-contexts/by-asset/{assetId}") {
+
+        val assetId =
+            call.parameters["assetId"]
+
+        if (assetId.isNullOrBlank()) {
+
+            call.respondError(
+                HttpStatusCode.BadRequest,
+                "assetId is required"
+            )
+
+            return@get
+        }
+
+        val response =
+            getMediaNavigationContextByAssetUseCase.execute(
+                assetId
+            )
+
+        if (response == null) {
+
+            call.respondError(
+                HttpStatusCode.NotFound,
+                "Media Navigation Context not found"
+            )
+
+            return@get
+        }
+
+        call.respondSuccess(
+            response
+        )
     }
 }

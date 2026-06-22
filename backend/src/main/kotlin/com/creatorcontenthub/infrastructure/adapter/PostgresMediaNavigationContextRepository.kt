@@ -223,6 +223,42 @@ class PostgresMediaNavigationContextRepository(
         }
     }
 
+    override fun findByAssetId(
+        assetId: String
+    ): MediaNavigationContext? {
+
+        dataSource.connection.use { connection ->
+
+            connection.prepareStatement(
+                """
+            SELECT
+                context_id
+            FROM media_navigation_contexts
+            WHERE asset_id = ?
+            """.trimIndent()
+            ).use { statement ->
+
+                statement.setString(
+                    1,
+                    assetId
+                )
+
+                statement.executeQuery().use { resultSet ->
+
+                    if (!resultSet.next()) {
+                        return null
+                    }
+
+                    return findById(
+                        resultSet.getString(
+                            "context_id"
+                        )
+                    )
+                }
+            }
+        }
+    }
+
     private fun insertContext(
         connection: Connection,
         context: MediaNavigationContext

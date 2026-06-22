@@ -10,6 +10,7 @@ import com.creatorcontenthub.application.pipeline.GenerateAudioStep
 import com.creatorcontenthub.application.pipeline.TranscriptionStep
 import com.creatorcontenthub.application.pipeline.SummaryStep
 import com.creatorcontenthub.application.pipeline.JobProcessor
+import com.creatorcontenthub.application.port.AssetRepository
 import com.creatorcontenthub.application.service.AssetRegistrationService
 import com.creatorcontenthub.application.service.ExistingJobResolver
 import com.creatorcontenthub.application.usecase.CreateMediaNavigationContextUseCase
@@ -24,6 +25,7 @@ import com.creatorcontenthub.infrastructure.http.requestId
 import com.creatorcontenthub.infrastructure.http.duration
 import com.creatorcontenthub.application.usecase.ProcessTextUseCase
 import com.creatorcontenthub.application.usecase.ExportTextUseCase
+import com.creatorcontenthub.application.usecase.GetMediaNavigationContextByAssetUseCase
 import com.creatorcontenthub.application.usecase.GetMediaNavigationContextUseCase
 import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
 import com.creatorcontenthub.application.usecase.ListJobsUseCase
@@ -214,6 +216,11 @@ fun Application.module() {
             mediaNavigationContextRepository
         )
 
+    val getMediaNavigationContextByAssetUseCase =
+        GetMediaNavigationContextByAssetUseCase(
+            mediaNavigationContextRepository
+        )
+
     val createMediaNavigationContextUseCase =
         CreateMediaNavigationContextUseCase(
             mediaNavigationContextRepository
@@ -389,6 +396,7 @@ fun Application.module() {
         exportTextUseCase,
         ingestYoutubeUseCase,
         jobRepository,
+        assetRepository,
         ingestionMetrics,
         hikariMetrics,
         dataSource,
@@ -400,6 +408,7 @@ fun Application.module() {
         deleteJobsUseCase,
         runtimeEventBus,
         getMediaNavigationContextUseCase,
+        getMediaNavigationContextByAssetUseCase,
         createMediaNavigationContextUseCase
     )
 }
@@ -457,6 +466,7 @@ fun Application.configureRouting(
     exportTextUseCase: ExportTextUseCase,
     ingestYoutubeUseCase: IngestYoutubeUseCase,
     jobRepository: JobRepository,
+    assetRepository: AssetRepository,
     ingestionMetrics: IngestionMetrics,
     hikariMetrics: HikariMetrics,
     dataSource: HikariDataSource,
@@ -468,6 +478,7 @@ fun Application.configureRouting(
     deleteJobsUseCase: DeleteJobsUseCase,
     runtimeEventBus: RuntimeEventBus,
     getMediaNavigationContextUseCase: GetMediaNavigationContextUseCase,
+    getMediaNavigationContextByAssetUseCase: GetMediaNavigationContextByAssetUseCase,
     createMediaNavigationContextUseCase: CreateMediaNavigationContextUseCase
 
 ) {
@@ -477,8 +488,15 @@ fun Application.configureRouting(
         textRoutes(processTextUseCase)
         exportRoutes(exportTextUseCase, jobRepository)
         searchRoutes(searchJobsUseCase)
-        jobRoutes(jobRepository)
-        mediaNavigationRoutes(getMediaNavigationContextUseCase, createMediaNavigationContextUseCase)
+        jobRoutes(
+            repository = jobRepository,
+            assetRepository = assetRepository
+        )
+        mediaNavigationRoutes(
+            getMediaNavigationContextUseCase,
+            getMediaNavigationContextByAssetUseCase,
+            createMediaNavigationContextUseCase
+        )
         jobMutationRoutes(deleteJobUseCase, deleteJobsUseCase)
         jobEventsRoutes(runtimeEventBus)
 
