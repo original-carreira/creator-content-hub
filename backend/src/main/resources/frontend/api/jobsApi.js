@@ -90,10 +90,66 @@ async function ingestYoutube(url) {
     return await res.json();
 }
 
+async function createMediaNavigationContext(
+    assetId,
+    ranges
+) {
+
+    const res = await fetch(
+        "/media-navigation-contexts",
+        {
+            method: "POST",
+
+            headers: {
+                "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+                assetId,
+                ranges
+            })
+        }
+    );
+
+    if (!res.ok) {
+        throw new Error(
+            "Erro ao criar Media Navigation Context"
+        );
+    }
+
+    return await res.json();
+}
+
+async function getMediaNavigationContextByAsset(
+    assetId
+) {
+
+    const res = await fetch(
+        `/media-navigation-contexts/by-asset/${assetId}`
+    );
+
+    if (res.status === 404) {
+        return null;
+    }
+
+    if (!res.ok) {
+        throw new Error(
+            "Erro ao carregar Media Navigation Context"
+        );
+    }
+
+    const payload =
+        await res.json();
+
+    return payload.data;
+}
+
 window.JobsApi = {
     fetchJobs,
     fetchJobDetails,
     searchJobs,
     deleteJobs,
-    ingestYoutube
+    ingestYoutube,
+    createMediaNavigationContext,
+    getMediaNavigationContextByAsset
 };

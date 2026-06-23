@@ -54,16 +54,32 @@
         }
 
         try {
-            const jobResponse = await fetch(`/jobs/${jobId}`);
+            const jobResponse =
+                await fetch(`/jobs/${jobId}`);
 
-            const jobData =  await jobResponse.json();
+            const jobData =
+                await jobResponse.json();
 
-            const job = jobData.data;
+            const job =
+                jobData.data;
 
-            const transcript = await loadTranscript(jobId);
+            const transcript =
+                await loadTranscript(jobId);
 
             workspaceStateApi.setTranscript(
                 transcript.data
+            );
+
+            const assetsResponse =
+                await fetch(
+                    `/jobs/${jobId}/assets`
+                );
+
+            const assetsPayload =
+                await assetsResponse.json();
+
+            workspaceStateApi.setAssets(
+                assetsPayload.data || []
             );
 
             renderJob(job);

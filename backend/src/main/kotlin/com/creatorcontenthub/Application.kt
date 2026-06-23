@@ -31,6 +31,7 @@ import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
 import com.creatorcontenthub.application.usecase.ListJobsUseCase
 import com.creatorcontenthub.application.usecase.ResumeJobUseCase
 import com.creatorcontenthub.application.usecase.SearchJobsUseCase
+import com.creatorcontenthub.application.usecase.UpdateMediaNavigationContextUseCase
 import com.creatorcontenthub.application.worker.QueueWorker
 import com.creatorcontenthub.application.worker.OrphanRecoveryWorker
 import com.creatorcontenthub.application.worker.RetryPolicy
@@ -226,6 +227,11 @@ fun Application.module() {
             mediaNavigationContextRepository
         )
 
+    val updateMediaNavigationContextUseCase =
+        UpdateMediaNavigationContextUseCase(
+            mediaNavigationContextRepository
+        )
+
     val ingestionMetrics = IngestionMetrics()
 
     val ytDlpPath = environment.config
@@ -409,7 +415,8 @@ fun Application.module() {
         runtimeEventBus,
         getMediaNavigationContextUseCase,
         getMediaNavigationContextByAssetUseCase,
-        createMediaNavigationContextUseCase
+        createMediaNavigationContextUseCase,
+        updateMediaNavigationContextUseCase
     )
 }
 
@@ -479,7 +486,8 @@ fun Application.configureRouting(
     runtimeEventBus: RuntimeEventBus,
     getMediaNavigationContextUseCase: GetMediaNavigationContextUseCase,
     getMediaNavigationContextByAssetUseCase: GetMediaNavigationContextByAssetUseCase,
-    createMediaNavigationContextUseCase: CreateMediaNavigationContextUseCase
+    createMediaNavigationContextUseCase: CreateMediaNavigationContextUseCase,
+    updateMediaNavigationContextUseCase: UpdateMediaNavigationContextUseCase
 
 ) {
     routing {
@@ -495,7 +503,8 @@ fun Application.configureRouting(
         mediaNavigationRoutes(
             getMediaNavigationContextUseCase,
             getMediaNavigationContextByAssetUseCase,
-            createMediaNavigationContextUseCase
+            createMediaNavigationContextUseCase,
+            updateMediaNavigationContextUseCase
         )
         jobMutationRoutes(deleteJobUseCase, deleteJobsUseCase)
         jobEventsRoutes(runtimeEventBus)
