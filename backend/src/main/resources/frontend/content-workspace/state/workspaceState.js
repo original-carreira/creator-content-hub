@@ -2,6 +2,8 @@ const workspaceState = {
 
     activeWorkspaceJobId: null,
 
+    assets: [],
+
     assetCollection: {
 
         collectionId: null,
@@ -38,6 +40,20 @@ function setWorkspaceJobId(jobId) {
 
     workspaceState.activeWorkspaceJobId =
         jobId;
+}
+
+function setAssets(assets) {
+
+    workspaceState.assets =
+        assets || [];
+}
+
+function getVideoAsset() {
+
+    return workspaceState.assets.find(
+        asset =>
+            asset.assetType === "VIDEO"
+    ) || null;
 }
 
 function setAssetCollection(assetCollection) {
@@ -131,6 +147,10 @@ window.ContentWorkspaceState = {
     workspaceState,
 
     setWorkspaceJobId,
+
+    setAssets,
+
+    getVideoAsset,
 
     setAssetCollection,
 

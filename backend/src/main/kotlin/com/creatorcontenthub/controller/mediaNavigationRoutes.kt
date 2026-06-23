@@ -1,9 +1,11 @@
 package com.creatorcontenthub.controller
 
 import com.creatorcontenthub.application.dto.CreateMediaNavigationContextRequest
+import com.creatorcontenthub.application.dto.UpdateMediaNavigationContextRequest
 import com.creatorcontenthub.application.usecase.CreateMediaNavigationContextUseCase
 import com.creatorcontenthub.application.usecase.GetMediaNavigationContextByAssetUseCase
 import com.creatorcontenthub.application.usecase.GetMediaNavigationContextUseCase
+import com.creatorcontenthub.application.usecase.UpdateMediaNavigationContextUseCase
 import com.creatorcontenthub.infrastructure.http.respondError
 import com.creatorcontenthub.infrastructure.http.respondSuccess
 import io.ktor.http.HttpStatusCode
@@ -14,7 +16,8 @@ import io.ktor.server.routing.*
 fun Route.mediaNavigationRoutes(
     getMediaNavigationContextUseCase: GetMediaNavigationContextUseCase,
     getMediaNavigationContextByAssetUseCase: GetMediaNavigationContextByAssetUseCase,
-    createMediaNavigationContextUseCase: CreateMediaNavigationContextUseCase
+    createMediaNavigationContextUseCase: CreateMediaNavigationContextUseCase,
+    updateMediaNavigationContextUseCase: UpdateMediaNavigationContextUseCase
 ) {
 
     post("/media-navigation-contexts") {
@@ -28,6 +31,47 @@ fun Route.mediaNavigationRoutes(
             )
 
         call.respondSuccess(response)
+    }
+
+    put("/media-navigation-contexts/{contextId}") {
+
+        val contextId =
+            call.parameters["contextId"]
+
+        if (contextId.isNullOrBlank()) {
+
+            call.respondError(
+                HttpStatusCode.BadRequest,
+                "contextId is required"
+            )
+
+            return@put
+        }
+
+        val request =
+            call.receive<UpdateMediaNavigationContextRequest>()
+
+        val updated =
+            updateMediaNavigationContextUseCase.execute(
+                contextId,
+                request
+            )
+
+        if (!updated) {
+
+            call.respondError(
+                HttpStatusCode.NotFound,
+                "Media Navigation Context not found"
+            )
+
+            return@put
+        }
+
+        call.respondSuccess(
+            mapOf(
+                "contextId" to contextId
+            )
+        )
     }
 
     get("/media-navigation-contexts/{contextId}") {

@@ -90,14 +90,14 @@ function renderTranscriptWorkspace() {
                         "
                     >
                         <strong>Cortes Selecionados</strong>
-
+                     
                         <button
                             type="button"
                             id="exportRangesTxtButton"
                         >
                             Exportar TXT
                         </button>
-                        
+
                         <button
                             type="button"
                             id="clearRangesButton"
