@@ -317,6 +317,83 @@ fun Route.jobRoutes(
         )
     }
 
+    get("/jobs/{jobId}/assets/{assetId}/stream") {
+
+        val jobId =
+            call.parameters["jobId"]
+
+        val assetId =
+            call.parameters["assetId"]
+
+        if (jobId.isNullOrBlank()) {
+            call.respondError(
+                HttpStatusCode.BadRequest,
+                "jobId is required"
+            )
+            return@get
+        }
+
+        if (assetId.isNullOrBlank()) {
+            call.respondError(
+                HttpStatusCode.BadRequest,
+                "assetId is required"
+            )
+            return@get
+        }
+
+        val asset =
+            assetRepository.findById(
+                assetId
+            )
+
+        if (asset == null) {
+            call.respondError(
+                HttpStatusCode.NotFound,
+                "Asset not found"
+            )
+            return@get
+        }
+
+        if (asset.jobId != jobId) {
+            call.respondError(
+                HttpStatusCode.NotFound,
+                "Asset not found"
+            )
+            return@get
+        }
+
+        if (asset.assetType != AssetType.VIDEO) {
+            call.respondError(
+                HttpStatusCode.BadRequest,
+                "Asset is not a VIDEO"
+            )
+            return@get
+        }
+
+        val file =
+            File(
+                asset.storagePath
+            )
+
+        if (!file.exists()) {
+            call.respondError(
+                HttpStatusCode.NotFound,
+                "File not found"
+            )
+            return@get
+        }
+
+        call.respondFile(
+            file
+        )
+
+        logger.info(
+            "event=video_stream_requested jobId={} assetId={}",
+            jobId,
+            assetId
+        )
+    }
+
     get("/jobs/{jobId}/preview") {
 
         val jobId = call.parameters["jobId"]

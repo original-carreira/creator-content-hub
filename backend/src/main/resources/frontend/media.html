@@ -68,35 +68,8 @@
             const assets =
                 payload.data;
 
-            const videoAsset =
-                assets.find(
-                    asset =>
-                        asset.assetType === "VIDEO"
-                );
-
-            let mediaNavigationContext =
-                null;
-
-            if (videoAsset) {
-
-                const contextResponse =
-                    await fetch(
-                        `/media-navigation-contexts/by-asset/${videoAsset.assetId}`
-                    );
-
-                if (contextResponse.ok) {
-
-                    const contextPayload =
-                        await contextResponse.json();
-
-                    mediaNavigationContext =
-                        contextPayload.data;
-                }
-            }
-
             renderMediaCenter(
-                assets,
-                mediaNavigationContext
+                assets
             );
 
         } catch (error) {
@@ -114,8 +87,7 @@
     }
 
     function renderMediaCenter(
-        assets,
-        mediaNavigationContext
+        assets
     ) {
 
         document.getElementById(
@@ -123,8 +95,7 @@
         ).innerHTML =
             window.VideoWorkspaceRenderer
                 .renderVideoWorkspace(
-                    assets,
-                    mediaNavigationContext
+                    assets
                 );
     }
 
