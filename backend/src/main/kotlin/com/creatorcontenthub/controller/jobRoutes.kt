@@ -10,6 +10,7 @@ import com.creatorcontenthub.domain.model.AssetType
 import com.creatorcontenthub.infrastructure.files.FilenameSanitizer
 import com.creatorcontenthub.infrastructure.http.respondError
 import com.creatorcontenthub.infrastructure.http.respondSuccess
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.routing.*
@@ -312,6 +313,83 @@ fun Route.jobRoutes(
 
         logger.info(
             "event=asset_download_requested jobId={} assetId={}",
+            jobId,
+            assetId
+        )
+    }
+
+    get("/jobs/{jobId}/assets/{assetId}/stream") {
+
+        val jobId =
+            call.parameters["jobId"]
+
+        val assetId =
+            call.parameters["assetId"]
+
+        if (jobId.isNullOrBlank()) {
+            call.respondError(
+                HttpStatusCode.BadRequest,
+                "jobId is required"
+            )
+            return@get
+        }
+
+        if (assetId.isNullOrBlank()) {
+            call.respondError(
+                HttpStatusCode.BadRequest,
+                "assetId is required"
+            )
+            return@get
+        }
+
+        val asset =
+            assetRepository.findById(
+                assetId
+            )
+
+        if (asset == null) {
+            call.respondError(
+                HttpStatusCode.NotFound,
+                "Asset not found"
+            )
+            return@get
+        }
+
+        if (asset.jobId != jobId) {
+            call.respondError(
+                HttpStatusCode.NotFound,
+                "Asset not found"
+            )
+            return@get
+        }
+
+        if (asset.assetType != AssetType.VIDEO) {
+            call.respondError(
+                HttpStatusCode.BadRequest,
+                "Asset is not a VIDEO"
+            )
+            return@get
+        }
+
+        val file =
+            File(
+                asset.storagePath
+            )
+
+        if (!file.exists()) {
+            call.respondError(
+                HttpStatusCode.NotFound,
+                "File not found"
+            )
+            return@get
+        }
+
+        call.respondFile(
+            file
+        )
+
+        logger.info(
+            "event=video_stream_requested jobId={} assetId={}",
             jobId,
             assetId
         )

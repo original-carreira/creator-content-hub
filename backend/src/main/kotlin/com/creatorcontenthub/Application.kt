@@ -75,6 +75,7 @@ import io.ktor.server.http.content.staticResources
 import io.ktor.server.netty.EngineMain
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.callloging.*
+import io.ktor.server.plugins.partialcontent.*
 import io.ktor.server.routing.*
 import kotlinx.serialization.json.Json
 import org.slf4j.event.Level
@@ -103,6 +104,7 @@ fun Application.module() {
     configureLogging()
     configureSerialization()
     configureStatusPages()
+    install(PartialContent)
 
     val meterRegistry = PrometheusRegistry.registry
     JvmMetricsConfig.register(meterRegistry)

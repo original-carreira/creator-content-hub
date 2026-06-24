@@ -1,6 +1,5 @@
 function renderVideoWorkspace(
-    assets,
-    mediaNavigationContext
+    assets
 ) {
 
     const videoAsset =
@@ -26,45 +25,6 @@ function renderVideoWorkspace(
             >
                 <strong>Video Workspace</strong>
                 
-                <div
-                    style="
-                        margin-bottom:12px;
-                        padding:12px;
-                        border:1px solid #ddd;
-                        border-radius:8px;
-                        background:#fafafa;
-                    "
-                >
-                    <div
-                        style="
-                            font-weight:bold;
-                            margin-bottom:6px;
-                        "
-                    >
-                        Seleções Salvas
-                    </div>
-
-                    ${
-                        mediaNavigationContext
-                            ? `
-                                <div>
-                                    Seleção:
-                                    ${mediaNavigationContext.name}
-                                </div>
-
-                                <div>
-                                    ${mediaNavigationContext.ranges.length}
-                                    cortes registrados
-                                </div>
-                            `
-                            : `
-                                <div>
-                                    Nenhuma seleção criada para este vídeo.
-                                </div>
-                            `
-                    }
-                </div>
-
                 <span
                     style="
                         font-size:12px;
@@ -73,6 +33,33 @@ function renderVideoWorkspace(
                 >
                     Primary Asset
                 </span>
+            </div>
+            
+            <div
+                style="
+                    margin-bottom:16px;
+                "
+            >
+                <video
+                    controls
+                    preload="metadata"
+                    style="
+                        width:100%;
+                        max-height:600px;
+                        background:#000;
+                        border-radius:8px;
+                    "
+                >
+                    <source
+                        src="/jobs/${
+                            new URLSearchParams(
+                                window.location.search
+                            ).get("jobId")
+                        }/assets/${videoAsset.assetId}/stream"
+                    />
+
+                    Seu navegador não suporta vídeo HTML5.
+                </video>
             </div>
 
             <div
