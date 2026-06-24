@@ -10,7 +10,6 @@ import com.creatorcontenthub.domain.model.AssetType
 import com.creatorcontenthub.infrastructure.files.FilenameSanitizer
 import com.creatorcontenthub.infrastructure.http.respondError
 import com.creatorcontenthub.infrastructure.http.respondSuccess
-import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.routing.*
