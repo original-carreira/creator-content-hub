@@ -24,7 +24,7 @@ function renderVideoWorkspace(
                 "
             >
                 <strong>Video Workspace</strong>
-                
+
                 <span
                     style="
                         font-size:12px;
@@ -34,7 +34,7 @@ function renderVideoWorkspace(
                     Primary Asset
                 </span>
             </div>
-            
+
             <div
                 style="
                     margin-bottom:16px;
@@ -52,14 +52,96 @@ function renderVideoWorkspace(
                 >
                     <source
                         src="/jobs/${
-                            new URLSearchParams(
-                                window.location.search
-                            ).get("jobId")
-                        }/assets/${videoAsset.assetId}/stream"
+        new URLSearchParams(
+            window.location.search
+        ).get("jobId")
+    }/assets/${videoAsset.assetId}/stream"
                     />
 
                     Seu navegador não suporta vídeo HTML5.
                 </video>
+            </div>
+
+            <div
+                style="
+                    margin-bottom:16px;
+                    border:1px solid #ddd;
+                    border-radius:10px;
+                    background:#fafafa;
+                    padding:16px;
+                "
+            >
+
+                <div
+                    style="
+                        font-size:12px;
+                        color:#666;
+                        margin-bottom:8px;
+                    "
+                >
+                    Video Metadata
+                </div>
+
+                <div
+                    id="videoCurrentTimeDisplay"
+                    style="
+                        font-size:14px;
+                        margin-bottom:8px;
+                    "
+                >
+                    Tempo Atual: 00:00:00
+                </div>
+
+                <div
+                    id="videoDurationDisplay"
+                    style="
+                        font-size:14px;
+                    "
+                >
+                    Duração: carregando...
+                </div>
+
+                <div
+                    style="
+                        margin-top:12px;
+                        display:flex;
+                        gap:8px;
+                        align-items:center;
+                        flex-wrap:wrap;
+                    "
+                >
+
+                    <input
+                        id="videoSeekInput"
+                        type="text"
+                        placeholder="30, 1:30 ou 00:01:30"
+                        style="
+                            padding:8px;
+                            border:1px solid #ccc;
+                            border-radius:8px;
+                            width:180px;
+                        "
+                    />
+
+                    <button
+                        type="button"
+                        id="videoSeekButton"
+                    >
+                        Ir para Tempo
+                    </button>
+
+                </div>
+
+                <div
+                    id="videoSeekFeedback"
+                    style="
+                        margin-top:8px;
+                        font-size:12px;
+                        color:#666;
+                        min-height:18px;
+                    "
+                ></div>
+
             </div>
 
             <div
@@ -91,7 +173,7 @@ function renderVideoWorkspace(
                     >
                         Download Video
                     </button>
-                 
+
                 </div>
 
             </div>
