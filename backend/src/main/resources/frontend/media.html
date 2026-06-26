@@ -40,6 +40,83 @@
         return params.get("jobId");
     }
 
+    function parseTemporalInput(
+        value
+    ) {
+
+        const normalizedValue =
+            value.trim();
+
+        if (
+            normalizedValue === ""
+        ) {
+            return Number.NaN;
+        }
+
+        if (
+            /^\d+$/.test(
+                normalizedValue
+            )
+        ) {
+
+            return Number(
+                normalizedValue
+            );
+        }
+
+        const parts =
+            normalizedValue.split(
+                ":"
+            );
+
+        if (
+            parts.length !== 2 &&
+            parts.length !== 3
+        ) {
+            return Number.NaN;
+        }
+
+        const numericParts =
+            parts.map(
+                part => Number(part)
+            );
+
+        if (
+            numericParts.some(
+                Number.isNaN
+            )
+        ) {
+            return Number.NaN;
+        }
+
+        if (
+            parts.length === 2
+        ) {
+
+            const [
+                minutes,
+                seconds
+            ] = numericParts;
+
+            return (
+                minutes * 60 +
+                seconds
+            );
+        }
+
+        const [
+            hours,
+            minutes,
+            seconds
+        ] = numericParts;
+
+        return (
+            hours * 3600 +
+            minutes * 60 +
+            seconds
+        );
+    }
+
     async function loadJob() {
 
         const jobId =
@@ -97,6 +174,202 @@
                 .renderVideoWorkspace(
                     assets
                 );
+
+        const videoElement =
+            document.querySelector(
+                "video"
+            );
+
+        const durationDisplay =
+            document.getElementById(
+                "videoDurationDisplay"
+            );
+
+        if (
+            videoElement &&
+            durationDisplay
+        ) {
+
+            videoElement.addEventListener(
+                "loadedmetadata",
+                () => {
+
+                    const durationSeconds =
+                        Math.floor(
+                            videoElement.duration
+                        );
+
+                    const hours =
+                        Math.floor(
+                            durationSeconds / 3600
+                        );
+
+                    const minutes =
+                        Math.floor(
+                            (durationSeconds % 3600) / 60
+                        );
+
+                    const seconds =
+                        durationSeconds % 60;
+
+                    const formattedDuration =
+                        [
+                            hours,
+                            minutes,
+                            seconds
+                        ]
+                            .map(
+                                value =>
+                                    String(value)
+                                        .padStart(
+                                            2,
+                                            "0"
+                                        )
+                            )
+                            .join(":");
+
+                    durationDisplay.innerText =
+                        `Duração: ${formattedDuration}`;
+                }
+            );
+
+            const currentTimeDisplay =
+                document.getElementById(
+                    "videoCurrentTimeDisplay"
+                );
+
+            if (
+                videoElement &&
+                currentTimeDisplay
+            ) {
+
+                videoElement.addEventListener(
+                    "timeupdate",
+                    () => {
+
+                        const currentSeconds =
+                            Math.floor(
+                                videoElement.currentTime
+                            );
+
+                        const hours =
+                            Math.floor(
+                                currentSeconds / 3600
+                            );
+
+                        const minutes =
+                            Math.floor(
+                                (currentSeconds % 3600) / 60
+                            );
+
+                        const seconds =
+                            currentSeconds % 60;
+
+                        const formattedTime =
+                            [
+                                hours,
+                                minutes,
+                                seconds
+                            ]
+                                .map(
+                                    value =>
+                                        String(value)
+                                            .padStart(
+                                                2,
+                                                "0"
+                                            )
+                                )
+                                .join(":");
+
+                        currentTimeDisplay.innerText =
+                            `Tempo Atual: ${formattedTime}`;
+                    }
+                );
+            }
+        }
+
+        const seekInput =
+            document.getElementById(
+                "videoSeekInput"
+            );
+
+        const seekButton =
+            document.getElementById(
+                "videoSeekButton"
+            );
+
+        const feedbackElement =
+            document.getElementById(
+                "videoSeekFeedback"
+            );
+
+        if (
+            videoElement &&
+            seekInput &&
+            seekButton
+        ) {
+
+            seekButton.addEventListener(
+                "click",
+                () => {
+
+                    const targetTime =
+                        parseTemporalInput(
+                            seekInput.value
+                        );
+
+                    if (
+                        Number.isNaN(
+                            targetTime
+                        )
+                    ) {
+
+                        if (feedbackElement) {
+
+                            feedbackElement.innerText =
+                                "Informe um tempo válido.";
+                        }
+
+                        return;
+                    }
+
+                    if (
+                        targetTime < 0
+                    ) {
+
+                        if (feedbackElement) {
+
+                            feedbackElement.innerText =
+                                "O tempo não pode ser negativo.";
+                        }
+
+                        return;
+                    }
+
+                    if (
+                        targetTime >
+                        videoElement.duration
+                    ) {
+
+                        if (feedbackElement) {
+
+                            feedbackElement.innerText =
+                                `Tempo deve estar entre 0 e ${Math.floor(videoElement.duration)} segundos.`;
+                        }
+
+                        return;
+                    }
+
+                    if (feedbackElement) {
+
+                        feedbackElement.innerText = "";
+                    }
+
+                    videoElement.currentTime =
+                        targetTime;
+                }
+            );
+        }
     }
 
     loadJob();
