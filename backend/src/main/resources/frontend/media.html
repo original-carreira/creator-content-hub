@@ -383,8 +383,8 @@
             }
 
             const selection =
-                window.ContentWorkspaceState
-                    .getClipSelection();
+                clipSelectionController
+                    .getSelection();
 
             const startTime =
                 formatVideoTime(
@@ -415,10 +415,7 @@
             }
 
             const indicator =
-                (
-                    selection.startTime !== null &&
-                    selection.endTime !== null
-                )
+                clipSelectionController.hasSelection()
                     ? "☑"
                     : "☐";
 
