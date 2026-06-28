@@ -120,7 +120,7 @@ function buildVideoAsset(job) {
         downloadable: true,
         viewable: true,
         playable: true,
-        editable: false,
+        editable: true,
 
         available: true
     };

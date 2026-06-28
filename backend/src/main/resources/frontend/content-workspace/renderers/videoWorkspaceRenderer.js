@@ -126,6 +126,11 @@ function renderVideoWorkspace(
                     <button
                         type="button"
                         id="videoSeekButton"
+                        style="
+                            min-width: 120px;
+                            padding: 8px 12px;
+                            border-radius:8px;
+                        "
                     >
                         Ir para Tempo
                     </button>
@@ -142,6 +147,95 @@ function renderVideoWorkspace(
                     "
                 ></div>
 
+            </div>
+            
+            <div
+                style="
+                    margin-top:16px;
+                    margin-bottom:16px;
+                    border:1px solid #ddd;
+                    border-radius:10px;
+                    background:#fafafa;
+                    padding:16px;
+                "
+            >
+            
+                <div
+                    style="
+                        font-size:12px;
+                        color:#666;
+                        margin-bottom:12px;
+                    "
+                >
+                    Seleção de Cortes
+                </div>
+            
+                <div
+                    style="
+                        display:flex;
+                        gap:8px;
+                        align-items:center;
+                        flex-wrap:wrap;
+                    "
+                >
+            
+                    <button
+                        type="button"
+                        id="clipMarkInButton"
+                        style="
+                            min-width:120px;
+                            padding:8px 12px;
+                            border-radius:8px;
+                        "
+                    >
+                        Marcar Início
+                    </button>
+            
+                    <button
+                        type="button"
+                        id="clipMarkOutButton"
+                        style="
+                            min-width:120px;
+                            padding:8px 12px;
+                            border-radius:8px;
+                        "
+                    >
+                        Marcar Fim
+                    </button>
+            
+                    <button
+                        type="button"
+                        id="clipClearSelectionButton"
+                        style="
+                            min-width:120px;
+                            padding:8px 12px;
+                            border-radius:8px;
+                        "
+                    >
+                        Limpar Seleção
+                    </button>
+            
+                </div>
+            
+                <div
+                    style="
+                        margin-top:16px;
+                        padding-top:12px;
+                        border-top:1px solid #ddd;
+                    "
+                >
+            
+                    <div
+                        id="clipSelectionDisplay"
+                        style="
+                            font-size:14px;
+                        "
+                    >
+                        ☐ Seleção Atual | Início: -- | Fim: -- | Duração: --
+                    </div>
+            
+                </div>
+            
             </div>
 
             <div
@@ -162,6 +256,11 @@ function renderVideoWorkspace(
                     <button
                         type="button"
                         id="videoDownloadButton"
+                         style="
+                            min-width:120px;
+                            padding:8px 12px;
+                            border-radius:8px;
+                        "
                         onclick="
                             window.location.href=
                             '/jobs/' +

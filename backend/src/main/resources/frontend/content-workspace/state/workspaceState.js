@@ -24,6 +24,13 @@ const workspaceState = {
 
     selectionRanges: [],
 
+    clipSelection: {
+
+        startTime: null,
+
+        endTime: null
+    },
+
     transcriptSearch: {
 
         searchTerm: "",
@@ -115,6 +122,36 @@ function clearSelectionRanges() {
     workspaceState.selectionRanges.length = 0;
 }
 
+function setClipSelectionStart(
+    startTime
+) {
+
+    workspaceState.clipSelection.startTime =
+        startTime;
+}
+
+function setClipSelectionEnd(
+    endTime
+) {
+
+    workspaceState.clipSelection.endTime =
+        endTime;
+}
+
+function clearClipSelection() {
+
+    workspaceState.clipSelection.startTime =
+        null;
+
+    workspaceState.clipSelection.endTime =
+        null;
+}
+
+function getClipSelection() {
+
+    return workspaceState.clipSelection;
+}
+
 function setTranscriptSearchTerm(searchTerm) {
 
     workspaceState.transcriptSearch.searchTerm =
@@ -165,6 +202,14 @@ window.ContentWorkspaceState = {
     removeSelectionRange,
 
     clearSelectionRanges,
+
+    setClipSelectionStart,
+
+    setClipSelectionEnd,
+
+    clearClipSelection,
+
+    getClipSelection,
 
     setTranscriptSearchTerm,
 

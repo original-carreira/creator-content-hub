@@ -26,7 +26,9 @@
 
 </div>
 
+<script src="content-workspace/state/workspaceState.js"></script>
 <script src="content-workspace/renderers/videoWorkspaceRenderer.js"></script>
+<script src="content-workspace/clip/clipSelectionController.js"></script>
 
 <script>
 
@@ -117,6 +119,49 @@
         );
     }
 
+    function formatVideoTime(
+        totalSeconds
+    ) {
+
+        if (
+            totalSeconds === null ||
+            Number.isNaN(totalSeconds)
+        ) {
+            return "--";
+        }
+
+        const seconds =
+            Math.floor(totalSeconds);
+
+        const hours =
+            Math.floor(
+                seconds / 3600
+            );
+
+        const minutes =
+            Math.floor(
+                (seconds % 3600) / 60
+            );
+
+        const remainingSeconds =
+            seconds % 60;
+
+        return [
+            hours,
+            minutes,
+            remainingSeconds
+        ]
+            .map(
+                value =>
+                    String(value)
+                        .padStart(
+                            2,
+                            "0"
+                        )
+            )
+            .join(":");
+    }
+
     async function loadJob() {
 
         const jobId =
@@ -178,6 +223,27 @@
         const videoElement =
             document.querySelector(
                 "video"
+            );
+
+        const clipSelectionController =
+            window.ClipSelectionController
+                .createClipSelectionController(
+                    window.ContentWorkspaceState
+                );
+
+        const markInButton =
+            document.getElementById(
+                "clipMarkInButton"
+            );
+
+        const markOutButton =
+            document.getElementById(
+                "clipMarkOutButton"
+            );
+
+        const clearSelectionButton =
+            document.getElementById(
+                "clipClearSelectionButton"
             );
 
         const durationDisplay =
@@ -303,6 +369,60 @@
                 "videoSeekFeedback"
             );
 
+        const clipSelectionDisplay =
+            document.getElementById(
+                "clipSelectionDisplay"
+            );
+
+        function updateClipSelectionDisplay() {
+
+            if (
+                !clipSelectionDisplay
+            ) {
+                return;
+            }
+
+            const selection =
+                clipSelectionController
+                    .getSelection();
+
+            const startTime =
+                formatVideoTime(
+                    selection.startTime
+                );
+
+            const endTime =
+                formatVideoTime(
+                    selection.endTime
+                );
+
+            let duration =
+                "--";
+
+            if (
+                selection.startTime !== null &&
+                selection.endTime !== null
+            ) {
+
+                duration =
+                    formatVideoTime(
+                        Math.max(
+                            0,
+                            selection.endTime -
+                            selection.startTime
+                        )
+                    );
+            }
+
+            const indicator =
+                clipSelectionController.hasSelection()
+                    ? "☑"
+                    : "☐";
+
+            clipSelectionDisplay.innerText =
+                `${indicator} Seleção Atual | Início: ${startTime} | Fim: ${endTime} | Duração: ${duration}`;
+        }
+
         if (
             videoElement &&
             seekInput &&
@@ -370,6 +490,63 @@
                 }
             );
         }
+
+        if (
+            videoElement &&
+            markInButton
+        ) {
+
+            markInButton.addEventListener(
+                "click",
+                () => {
+
+                    clipSelectionController
+                        .setClipStartTime(
+                            videoElement.currentTime
+                        );
+
+                    updateClipSelectionDisplay();
+                }
+            );
+        }
+
+        if (
+            videoElement &&
+            markOutButton
+        ) {
+
+            markOutButton.addEventListener(
+                "click",
+                () => {
+
+                    clipSelectionController
+                        .setClipEndTime(
+                            videoElement.currentTime
+                        );
+
+                    updateClipSelectionDisplay();
+                }
+            );
+        }
+
+        if (
+            clearSelectionButton
+        ) {
+
+            clearSelectionButton
+                .addEventListener(
+                    "click",
+                    () => {
+
+                        clipSelectionController
+                            .clearSelection();
+
+                        updateClipSelectionDisplay();
+                    }
+                );
+        }
+
+        updateClipSelectionDisplay();
     }
 
     loadJob();
