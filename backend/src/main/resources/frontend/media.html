@@ -29,6 +29,10 @@
 <script src="content-workspace/state/workspaceState.js"></script>
 <script src="content-workspace/renderers/videoWorkspaceRenderer.js"></script>
 <script src="content-workspace/clip/clipSelectionController.js"></script>
+<script src="content-workspace/timeline/timelineRenderer.js"></script>
+<script src="content-workspace/timeline/timelineController.js"></script>
+<script src="content-workspace/timeline/timelineView.js"></script>
+<script src="content-workspace/timeline/timelineWorkspace.js"></script>
 
 <script>
 
@@ -225,6 +229,22 @@
                 "video"
             );
 
+        window.TimelineWorkspace
+            .initialize({
+                videoElement
+            });
+
+        window.TimelineWorkspace
+            .setSeekHandler({
+
+                handler: requestedTime => {
+
+                    videoElement.currentTime =
+                        requestedTime;
+                }
+
+            });
+
         const clipSelectionController =
             window.ClipSelectionController
                 .createClipSelectionController(
@@ -308,7 +328,6 @@
                 videoElement &&
                 currentTimeDisplay
             ) {
-
                 videoElement.addEventListener(
                     "timeupdate",
                     () => {
@@ -349,6 +368,10 @@
 
                         currentTimeDisplay.innerText =
                             `Tempo Atual: ${formattedTime}`;
+
+                        window.TimelineWorkspace.updateCurrentTime({
+                            currentTime: videoElement.currentTime
+                        });
                     }
                 );
             }
