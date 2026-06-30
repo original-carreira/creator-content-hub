@@ -1,3 +1,19 @@
+/*
+ * Global Styles Aggregator
+ *
+ * RESPONSIBILITIES:
+ * - global application styles
+ * - workspace style imports
+ *
+ * IMPORTANT:
+ * - Workspace-specific styles should live inside
+ *   their own module.
+ */
+
+@import url("./content-workspace/timeline/timeline.css");
+
+/* Base */
+
 .container {
     max-width: 1100px;
     margin: 0 auto;

@@ -61,7 +61,12 @@ function renderVideoWorkspace(
                     Seu navegador não suporta vídeo HTML5.
                 </video>
             </div>
-
+            
+            ${window.TimelineWorkspace.renderTimeline({
+                videoAsset,
+                videoElement: null
+            })}
+            
             <div
                 style="
                     margin-bottom:16px;
