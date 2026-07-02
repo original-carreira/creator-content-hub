@@ -411,6 +411,7 @@
             validationResult,
             availableOperations
         ) {
+
             const operations =
                 availableOperations.operations;
 
@@ -424,11 +425,10 @@
                     "DEFINE_SELECTION_END"
                 );
 
-            markOutButton.disabled =
+            clearSelectionButton.disabled =
                 !operations.includes(
-                    "DEFINE_SELECTION_END"
+                    "CLEAR_SELECTION"
                 );
-
         }
 
         function updateClipSelectionDisplay() {
