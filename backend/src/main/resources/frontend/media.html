@@ -251,6 +251,16 @@
                     window.ContentWorkspaceState
                 );
 
+        const mediaOperationsController =
+            window.MediaOperationsController
+                .createMediaOperationsController();
+
+        mediaOperationsController.initialize();
+
+        const mediaOperationsApi =
+            mediaOperationsController
+                .getApi();
+
         const markInButton =
             document.getElementById(
                 "clipMarkInButton"
@@ -397,6 +407,30 @@
                 "clipSelectionDisplay"
             );
 
+        function handleSelectionValidation(
+            validationResult,
+            availableOperations
+        ) {
+            const operations =
+                availableOperations.operations;
+
+            markInButton.disabled =
+                !operations.includes(
+                    "DEFINE_SELECTION_START"
+                );
+
+            markOutButton.disabled =
+                !operations.includes(
+                    "DEFINE_SELECTION_END"
+                );
+
+            markOutButton.disabled =
+                !operations.includes(
+                    "DEFINE_SELECTION_END"
+                );
+
+        }
+
         function updateClipSelectionDisplay() {
 
             if (
@@ -408,6 +442,23 @@
             const selection =
                 clipSelectionController
                     .getSelection();
+
+            const validationResult =
+                mediaOperationsApi
+                    .validateSelection(
+                        selection
+                    );
+
+            const availableOperations =
+                mediaOperationsApi
+                    .resolveAvailableOperations(
+                        selection
+                    );
+
+            handleSelectionValidation(
+                validationResult,
+                availableOperations
+            );
 
             const startTime =
                 formatVideoTime(
