@@ -138,6 +138,18 @@ function setClipSelectionEnd(
         endTime;
 }
 
+function setClipSelection(
+    startTime,
+    endTime
+) {
+
+    workspaceState.clipSelection.startTime =
+        startTime;
+
+    workspaceState.clipSelection.endTime =
+        endTime;
+}
+
 function clearClipSelection() {
 
     workspaceState.clipSelection.startTime =
@@ -206,6 +218,8 @@ window.ContentWorkspaceState = {
     setClipSelectionStart,
 
     setClipSelectionEnd,
+
+    setClipSelection,
 
     clearClipSelection,
 
