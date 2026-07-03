@@ -172,7 +172,7 @@ function createMediaOperationsController() {
             );
 
             operations.push(
-                "CLEAR_SELECTION"
+                window.ClipOperation.CLEAR_SELECTION
             );
         }
 
@@ -191,12 +191,12 @@ function createMediaOperationsController() {
 
             if (
                 !operations.includes(
-                    "CLEAR_SELECTION"
+                    window.ClipOperation.CLEAR_SELECTION
                 )
             ) {
 
                 operations.push(
-                    "CLEAR_SELECTION"
+                    window.ClipOperation.CLEAR_SELECTION
                 );
             }
         }

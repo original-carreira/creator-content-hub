@@ -22,6 +22,18 @@ function createClipSelectionController(
             );
     }
 
+    function setSelection(
+        startTime,
+        endTime
+    ) {
+
+        workspaceStateApi
+            .setClipSelection(
+                startTime,
+                endTime
+            );
+    }
+
     function clearSelection() {
 
         workspaceStateApi
@@ -40,8 +52,11 @@ function createClipSelectionController(
             getSelection();
 
         return (
+
             selection.startTime !== null &&
+
             selection.endTime !== null
+
         );
     }
 
@@ -50,6 +65,8 @@ function createClipSelectionController(
         setClipStartTime,
 
         setClipEndTime,
+
+        setSelection,
 
         clearSelection,
 

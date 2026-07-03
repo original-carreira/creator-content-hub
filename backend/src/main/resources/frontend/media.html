@@ -29,6 +29,9 @@
 <script src="content-workspace/state/workspaceState.js"></script>
 <script src="content-workspace/renderers/videoWorkspaceRenderer.js"></script>
 <script src="content-workspace/clip/clipSelectionController.js"></script>
+<script src="content-workspace/clip/clipOperation.js"></script>
+<script src="content-workspace/clip/operationResult.js"></script>
+<script src="content-workspace/clip/clipOperationsController.js"></script>
 <script src="content-workspace/timeline/timelineRenderer.js"></script>
 <script src="content-workspace/timeline/timelineController.js"></script>
 <script src="content-workspace/timeline/timelineView.js"></script>
@@ -251,6 +254,15 @@
                     window.ContentWorkspaceState
                 );
 
+        const clipOperationsController =
+            window.ClipOperationsController
+                .createClipOperationsController({
+                    clipSelectionController
+                });
+
+        const clipOperationsApi =
+            clipOperationsController.getApi();
+
         const mediaOperationsController =
             window.MediaOperationsController
                 .createMediaOperationsController();
@@ -427,7 +439,7 @@
 
             clearSelectionButton.disabled =
                 !operations.includes(
-                    "CLEAR_SELECTION"
+                    window.ClipOperation.CLEAR_SELECTION
                 );
         }
 
@@ -612,8 +624,9 @@
                     "click",
                     () => {
 
-                        clipSelectionController
-                            .clearSelection();
+                        const operationResult =
+                            clipOperationsApi
+                                .clearSelection();
 
                         updateClipSelectionDisplay();
                     }
