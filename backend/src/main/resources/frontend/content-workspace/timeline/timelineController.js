@@ -123,6 +123,17 @@ function createTimelineController() {
         };
     }
 
+    function resolveTimelinePosition({
+                                         clientX
+                                     }) {
+
+        return calculateTimelinePosition({
+
+            clientX
+
+        });
+    }
+
     function buildTimelineViewModel({
                                         videoAsset
     }) {
@@ -186,7 +197,7 @@ function createTimelineController() {
 
         const timelinePosition =
 
-            calculateTimelinePosition({
+            resolveTimelinePosition({
 
                 clientX
 
@@ -216,7 +227,7 @@ function createTimelineController() {
 
         const timelinePosition =
 
-            calculateTimelinePosition({
+            resolveTimelinePosition({
 
                 clientX
 
@@ -243,6 +254,7 @@ function createTimelineController() {
         updateDuration,
         updatePointerPosition,
         requestSeek,
+        resolveTimelinePosition,
         setTimelineView
     };
 }

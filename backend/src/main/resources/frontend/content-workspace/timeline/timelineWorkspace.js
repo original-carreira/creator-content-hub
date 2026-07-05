@@ -37,7 +37,26 @@
 
 let timelineController = null;
 let timelineView = null;
+
 let onSeekRequested = null;
+let onSelectionStartRequested = null;
+
+/*
+ * Estado operacional utilizado exclusivamente pelo
+ * TimelineWorkspace para coordenar o ciclo de vida
+ * das interações do ponteiro sobre a Timeline.
+ *
+ * IMPORTANTE:
+ * - NÃO representa estado do domínio Timeline
+ * - NÃO representa WorkspaceState
+ * - NÃO representa estado do vídeo
+ * - NÃO representa estado da Clip Selection
+ *
+ * Este estado existe apenas durante a coordenação
+ * dos eventos do ponteiro realizada pelo
+ * Composition Root da Timeline.
+ */
+let isPointerInteractionActive = false;
 
 function renderTimeline({
                             videoAsset,
@@ -110,10 +129,90 @@ function initialize({
 
     if (timelineTrack) {
 
+        /*
+         * Coordenação do ciclo de vida da interação do ponteiro.
+         *
+         * O TimelineWorkspace é responsável apenas por acompanhar
+         * o início e o término da interação durante a coordenação
+         * dos eventos do DOM.
+         */
         timelineTrack.addEventListener(
-            "mousemove",
+            "pointerdown",
+
+            () => {
+
+                isPointerInteractionActive = true;
+
+            }
+        );
+
+        timelineTrack.addEventListener(
+            "pointerup",
+
+            () => {
+
+                isPointerInteractionActive = false;
+
+            }
+        );
+
+        timelineTrack.addEventListener(
+            "pointerleave",
+
+            () => {
+
+                isPointerInteractionActive = false;
+
+            }
+        );
+
+        timelineTrack.addEventListener(
+            "pointermove",
 
             event => {
+
+                /*
+                 * Durante o Scrubbing o Hover permanece
+                 * temporariamente suspenso.
+                 *
+                 * DECISÃO
+                 *
+                 * Este comportamento foi adotado após
+                 * validação comportamental com o usuário
+                 * (EC-001).
+                 *
+                 * Durante uma interação ativa, a Timeline
+                 * permanece exclusivamente em modo de
+                 * navegação contínua.
+                 */
+                if (isPointerInteractionActive) {
+
+                    const timelinePosition =
+
+                        timelineController
+                            ?.resolveTimelinePosition({
+
+                                clientX: event.clientX
+
+                            });
+
+                    if (
+
+                        timelinePosition &&
+
+                        onSeekRequested
+
+                    ) {
+
+                        onSeekRequested(
+                            timelinePosition.time
+                        );
+
+                    }
+
+                    return;
+
+                }
 
                 timelineController
                     ?.updatePointerPosition({
@@ -140,18 +239,37 @@ function initialize({
                         });
 
                 if (
-
-                    requestedTime === undefined ||
-
-                    !onSeekRequested
-
+                    requestedTime === undefined
                 ) {
                     return;
                 }
 
-                onSeekRequested(
-                    requestedTime
-                );
+                /*
+                 * Navegação da Timeline.
+                 */
+                if (onSeekRequested) {
+
+                    onSeekRequested(
+                        requestedTime
+                    );
+
+                }
+
+                /*
+                 * Construção da seleção atual.
+                 *
+                 * UF-02 — Timeline Selection Creation
+                 *
+                 * Nesta etapa, um clique na Timeline também
+                 * pode definir o início da seleção atual.
+                 */
+                if (onSelectionStartRequested) {
+
+                    onSelectionStartRequested(
+                        requestedTime
+                    );
+
+                }
 
             }
         );
@@ -163,6 +281,14 @@ function setSeekHandler({
                         }) {
 
     onSeekRequested =
+        handler;
+}
+
+function setSelectionStartHandler({
+                                      handler
+                                  }) {
+
+    onSelectionStartRequested =
         handler;
 }
 
@@ -181,10 +307,15 @@ function updateCurrentTime({
 
         });
 }
+
 window.TimelineWorkspace = {
 
     renderTimeline,
     initialize,
-    updateCurrentTime,
-    setSeekHandler
+
+    setSeekHandler,
+    setSelectionStartHandler,
+
+    updateCurrentTime
+
 };

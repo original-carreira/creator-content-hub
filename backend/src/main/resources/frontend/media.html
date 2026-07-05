@@ -32,6 +32,7 @@
 <script src="content-workspace/clip/clipOperation.js"></script>
 <script src="content-workspace/clip/operationResult.js"></script>
 <script src="content-workspace/clip/clipOperationsController.js"></script>
+<script src="content-workspace/media-operations/mediaOperationsController.js"></script>
 <script src="content-workspace/timeline/timelineRenderer.js"></script>
 <script src="content-workspace/timeline/timelineController.js"></script>
 <script src="content-workspace/timeline/timelineView.js"></script>
@@ -219,6 +220,13 @@
         assets
     ) {
 
+        /*
+         * ============================================================
+         * FASE 1
+         * Renderização do Media Workspace
+         * ============================================================
+         */
+
         document.getElementById(
             "mediaContent"
         ).innerHTML =
@@ -227,51 +235,21 @@
                     assets
                 );
 
+        /*
+         * ============================================================
+         * FASE 2
+         * Resolução das referências do DOM
+         *
+         * Nesta fase nenhum comportamento é executado.
+         * Apenas são resolvidas todas as referências
+         * necessárias para as fases seguintes.
+         * ============================================================
+         */
+
         const videoElement =
             document.querySelector(
                 "video"
             );
-
-        window.TimelineWorkspace
-            .initialize({
-                videoElement
-            });
-
-        window.TimelineWorkspace
-            .setSeekHandler({
-
-                handler: requestedTime => {
-
-                    videoElement.currentTime =
-                        requestedTime;
-                }
-
-            });
-
-        const clipSelectionController =
-            window.ClipSelectionController
-                .createClipSelectionController(
-                    window.ContentWorkspaceState
-                );
-
-        const clipOperationsController =
-            window.ClipOperationsController
-                .createClipOperationsController({
-                    clipSelectionController
-                });
-
-        const clipOperationsApi =
-            clipOperationsController.getApi();
-
-        const mediaOperationsController =
-            window.MediaOperationsController
-                .createMediaOperationsController();
-
-        mediaOperationsController.initialize();
-
-        const mediaOperationsApi =
-            mediaOperationsController
-                .getApi();
 
         const markInButton =
             document.getElementById(
@@ -293,111 +271,10 @@
                 "videoDurationDisplay"
             );
 
-        if (
-            videoElement &&
-            durationDisplay
-        ) {
-
-            videoElement.addEventListener(
-                "loadedmetadata",
-                () => {
-
-                    const durationSeconds =
-                        Math.floor(
-                            videoElement.duration
-                        );
-
-                    const hours =
-                        Math.floor(
-                            durationSeconds / 3600
-                        );
-
-                    const minutes =
-                        Math.floor(
-                            (durationSeconds % 3600) / 60
-                        );
-
-                    const seconds =
-                        durationSeconds % 60;
-
-                    const formattedDuration =
-                        [
-                            hours,
-                            minutes,
-                            seconds
-                        ]
-                            .map(
-                                value =>
-                                    String(value)
-                                        .padStart(
-                                            2,
-                                            "0"
-                                        )
-                            )
-                            .join(":");
-
-                    durationDisplay.innerText =
-                        `Duração: ${formattedDuration}`;
-                }
+        const currentTimeDisplay =
+            document.getElementById(
+                "videoCurrentTimeDisplay"
             );
-
-            const currentTimeDisplay =
-                document.getElementById(
-                    "videoCurrentTimeDisplay"
-                );
-
-            if (
-                videoElement &&
-                currentTimeDisplay
-            ) {
-                videoElement.addEventListener(
-                    "timeupdate",
-                    () => {
-
-                        const currentSeconds =
-                            Math.floor(
-                                videoElement.currentTime
-                            );
-
-                        const hours =
-                            Math.floor(
-                                currentSeconds / 3600
-                            );
-
-                        const minutes =
-                            Math.floor(
-                                (currentSeconds % 3600) / 60
-                            );
-
-                        const seconds =
-                            currentSeconds % 60;
-
-                        const formattedTime =
-                            [
-                                hours,
-                                minutes,
-                                seconds
-                            ]
-                                .map(
-                                    value =>
-                                        String(value)
-                                            .padStart(
-                                                2,
-                                                "0"
-                                            )
-                                )
-                                .join(":");
-
-                        currentTimeDisplay.innerText =
-                            `Tempo Atual: ${formattedTime}`;
-
-                        window.TimelineWorkspace.updateCurrentTime({
-                            currentTime: videoElement.currentTime
-                        });
-                    }
-                );
-            }
-        }
 
         const seekInput =
             document.getElementById(
@@ -418,6 +295,174 @@
             document.getElementById(
                 "clipSelectionDisplay"
             );
+
+        /*
+         * ============================================================
+         * FASE 3
+         * Criação dos domínios
+         *
+         * Nesta fase todos os domínios do Media Workspace
+         * são materializados.
+         *
+         * Nenhum domínio é inicializado nesta etapa.
+         * ============================================================
+         */
+
+        const clipSelectionController =
+            window.ClipSelectionController
+                .createClipSelectionController(
+                    window.ContentWorkspaceState
+                );
+
+        const clipOperationsController =
+            window.ClipOperationsController
+                .createClipOperationsController({
+
+                    clipSelectionController
+
+                });
+
+        const clipOperationsApi =
+            clipOperationsController
+                .getApi();
+
+        const mediaOperationsController =
+            window.MediaOperationsController
+                .createMediaOperationsController();
+
+        const mediaOperationsApi =
+            mediaOperationsController
+                .getApi();
+
+        /*
+         * ============================================================
+         * FASE 4
+         * Inicialização dos domínios
+         *
+         * Nesta fase ocorre apenas a inicialização
+         * dos componentes que possuem ciclo de vida.
+         * ============================================================
+         */
+
+        window.TimelineWorkspace
+            .initialize({
+
+                videoElement
+
+            });
+
+        mediaOperationsController
+            .initialize();
+
+        /*
+         * ============================================================
+         * FASE 5
+         * Integração entre domínios
+         *
+         * Este bloco representa o Composition Root
+         * entre Timeline e Media Workspace.
+         *
+         * Toda integração futura da Timeline deverá
+         * permanecer concentrada nesta região.
+         * ============================================================
+         */
+
+        window.TimelineWorkspace
+            .setSeekHandler({
+
+                handler: requestedTime => {
+
+                    videoElement.currentTime =
+                        requestedTime;
+
+                }
+
+            });
+
+        window.TimelineWorkspace
+            .setSelectionStartHandler({
+
+                handler: requestedTime => {
+
+                    const selection =
+                        clipSelectionController
+                            .getSelection();
+
+                    /*
+                     * UF-02 — Timeline Selection Creation
+                     *
+                     * A Timeline produz apenas uma intenção
+                     * temporal. O Composition Root decide
+                     * qual operação deve ser executada
+                     * conforme o estado atual da seleção.
+                     */
+
+                    if (
+                        selection.startTime === null
+                    ) {
+
+                        clipSelectionController
+                            .setClipStartTime(
+                                requestedTime
+                            );
+
+                    } else if (
+                        selection.endTime === null
+                    ) {
+
+                        /*
+                         * A Timeline não deve construir
+                         * uma seleção inválida.
+                         *
+                         * Caso o usuário selecione um
+                         * tempo menor ou igual ao início,
+                         * a operação é ignorada e a
+                         * seleção permanece aguardando
+                         * um fim válido.
+                         */
+                        if (
+                            requestedTime <=
+                            selection.startTime
+                        ) {
+
+                            return;
+
+                        }
+
+                        clipSelectionController
+                            .setClipEndTime(
+                                requestedTime
+                            );
+
+                    } else {
+
+                        clipSelectionController
+                            .clearSelection();
+
+                        clipSelectionController
+                            .setClipStartTime(
+                                requestedTime
+                            );
+
+                    }
+
+                    updateClipSelectionDisplay();
+
+                }
+
+            });
+
+        /*
+ * ============================================================
+ * FASE 5.1
+ * Funções privadas do Composition Root
+ *
+ * Estas funções pertencem exclusivamente ao
+ * Media Workspace e são utilizadas pelas fases
+ * subsequentes para sincronizar a interface com
+ * o estado atual do domínio.
+ * ============================================================
+ */
 
         function handleSelectionValidation(
             validationResult,
@@ -501,13 +546,144 @@
             }
 
             const indicator =
-                clipSelectionController.hasSelection()
+                clipSelectionController
+                    .hasSelection()
                     ? "☑"
                     : "☐";
 
             clipSelectionDisplay.innerText =
                 `${indicator} Seleção Atual | Início: ${startTime} | Fim: ${endTime} | Duração: ${duration}`;
         }
+
+
+        /*
+         * ============================================================
+         * FASE 6
+         * Eventos do HTML5 Video
+         *
+         * Responsável pela sincronização entre o
+         * HTML5 Video e os componentes do Media Workspace.
+         * ============================================================
+         */
+
+        if (
+            videoElement &&
+            durationDisplay
+        ) {
+
+            videoElement.addEventListener(
+                "loadedmetadata",
+                () => {
+
+                    const durationSeconds =
+                        Math.floor(
+                            videoElement.duration
+                        );
+
+                    const hours =
+                        Math.floor(
+                            durationSeconds / 3600
+                        );
+
+                    const minutes =
+                        Math.floor(
+                            (durationSeconds % 3600) / 60
+                        );
+
+                    const seconds =
+                        durationSeconds % 60;
+
+                    const formattedDuration =
+                        [
+                            hours,
+                            minutes,
+                            seconds
+                        ]
+                            .map(
+                                value =>
+                                    String(value)
+                                        .padStart(
+                                            2,
+                                            "0"
+                                        )
+                            )
+                            .join(":");
+
+                    durationDisplay.innerText =
+                        `Duração: ${formattedDuration}`;
+                }
+            );
+        }
+
+        if (
+            videoElement &&
+            currentTimeDisplay
+        ) {
+
+            videoElement.addEventListener(
+                "timeupdate",
+
+                () => {
+
+                    const currentSeconds =
+                        Math.floor(
+                            videoElement.currentTime
+                        );
+
+                    const hours =
+                        Math.floor(
+                            currentSeconds / 3600
+                        );
+
+                    const minutes =
+                        Math.floor(
+                            (currentSeconds % 3600) / 60
+                        );
+
+                    const seconds =
+                        currentSeconds % 60;
+
+                    const formattedTime =
+                        [
+                            hours,
+                            minutes,
+                            seconds
+                        ]
+                            .map(
+                                value =>
+                                    String(value)
+                                        .padStart(
+                                            2,
+                                            "0"
+                                        )
+                            )
+                            .join(":");
+
+                    currentTimeDisplay.innerText =
+                        `Tempo Atual: ${formattedTime}`;
+
+                    window.TimelineWorkspace
+                        .updateCurrentTime({
+
+                            currentTime:
+                            videoElement.currentTime
+
+                        });
+
+                }
+            );
+
+        }
+
+        /*
+         * ============================================================
+         * FASE 7
+         * Eventos da Interface
+         *
+         * Responsável exclusivamente pela interação
+         * do usuário com os componentes visuais.
+         * ============================================================
+         */
 
         if (
             videoElement &&
@@ -517,6 +693,7 @@
 
             seekButton.addEventListener(
                 "click",
+
                 () => {
 
                     const targetTime =
@@ -534,6 +711,7 @@
 
                             feedbackElement.innerText =
                                 "Informe um tempo válido.";
+
                         }
 
                         return;
@@ -547,6 +725,7 @@
 
                             feedbackElement.innerText =
                                 "O tempo não pode ser negativo.";
+
                         }
 
                         return;
@@ -561,6 +740,7 @@
 
                             feedbackElement.innerText =
                                 `Tempo deve estar entre 0 e ${Math.floor(videoElement.duration)} segundos.`;
+
                         }
 
                         return;
@@ -569,12 +749,15 @@
                     if (feedbackElement) {
 
                         feedbackElement.innerText = "";
+
                     }
 
                     videoElement.currentTime =
                         targetTime;
+
                 }
             );
+
         }
 
         if (
@@ -584,6 +767,7 @@
 
             markInButton.addEventListener(
                 "click",
+
                 () => {
 
                     clipSelectionController
@@ -592,8 +776,10 @@
                         );
 
                     updateClipSelectionDisplay();
+
                 }
             );
+
         }
 
         if (
@@ -603,6 +789,7 @@
 
             markOutButton.addEventListener(
                 "click",
+
                 () => {
 
                     clipSelectionController
@@ -611,8 +798,10 @@
                         );
 
                     updateClipSelectionDisplay();
+
                 }
             );
+
         }
 
         if (
@@ -621,19 +810,34 @@
 
             clearSelectionButton
                 .addEventListener(
+
                     "click",
+
                     () => {
 
-                        const operationResult =
-                            clipOperationsApi
-                                .clearSelection();
+                        clipOperationsApi
+                            .clearSelection();
 
                         updateClipSelectionDisplay();
+
                     }
+
                 );
+
         }
 
+        /*
+         * ============================================================
+         * FASE 8
+         * Estado inicial
+         *
+         * Responsável por sincronizar a interface
+         * com o estado inicial do Workspace.
+         * ============================================================
+         */
+
         updateClipSelectionDisplay();
+
     }
 
     loadJob();

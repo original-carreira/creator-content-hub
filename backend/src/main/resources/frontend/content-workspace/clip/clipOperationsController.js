@@ -22,8 +22,16 @@ function createClipOperationsController({
 
     function clearSelection() {
 
+        const selection =
+            clipSelectionController
+                .getSelection();
+
         if (
-            !clipSelectionController.hasSelection()
+
+            selection.startTime === null &&
+
+            selection.endTime === null
+
         ) {
 
             return window.OperationResult
