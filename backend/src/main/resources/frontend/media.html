@@ -29,6 +29,7 @@
 <script src="content-workspace/state/workspaceState.js"></script>
 <script src="content-workspace/renderers/videoWorkspaceRenderer.js"></script>
 <script src="content-workspace/clip/clipSelectionController.js"></script>
+<script src="content-workspace/selection-editing/selectionEditingController.js"></script>
 <script src="content-workspace/clip/clipOperation.js"></script>
 <script src="content-workspace/clip/operationResult.js"></script>
 <script src="content-workspace/clip/clipOperationsController.js"></script>
@@ -301,10 +302,14 @@
          * FASE 3
          * Criação dos domínios
          *
-         * Nesta fase todos os domínios do Media Workspace
-         * são materializados.
+         * Nesta fase todos os domínios do Media Workspace são materializados.
          *
-         * Nenhum domínio é inicializado nesta etapa.
+         * Cada domínio permanece isolado durante esta etapa.
+         *
+         * Nenhum domínio é inicializado.
+         * Nenhuma integração entre domínios ocorre nesta fase.
+         * A integração permanece concentrada exclusivamente no Composition Root
+         * durante as fases subsequentes.
          * ============================================================
          */
 
@@ -313,6 +318,14 @@
                 .createClipSelectionController(
                     window.ContentWorkspaceState
                 );
+
+        const selectionEditingController =
+            window.SelectionEditingController
+                .createSelectionEditingController({
+
+                    clipSelectionController
+
+                });
 
         const clipOperationsController =
             window.ClipOperationsController
@@ -379,72 +392,39 @@
 
             });
 
+        /*
+         * ============================================================
+         * Selection Editing
+         *
+         * Contrato de integração entre Timeline
+         * e Selection Editing.
+         *
+         * Nesta etapa apenas o ponto de integração
+         * é materializado.
+         *
+         * Nenhuma comunicação entre os domínios
+         * ocorre durante esta Foundation.
+         * ============================================================
+         */
+
         window.TimelineWorkspace
-            .setSelectionStartHandler({
+            .setTimelineInteractionHandler({
 
-                handler: requestedTime => {
+                handler: timelineInteraction => {
 
-                    const selection =
-                        clipSelectionController
-                            .getSelection();
+                    selectionEditingController
+                        .handleTimelineInteraction(
+                            timelineInteraction
+                        );
 
                     /*
-                     * UF-02 — Timeline Selection Creation
+                     * S-02
                      *
-                     * A Timeline produz apenas uma intenção
-                     * temporal. O Composition Root decide
-                     * qual operação deve ser executada
-                     * conforme o estado atual da seleção.
+                     * O Composition Root permanece
+                     * responsável por sincronizar
+                     * a representação visual com
+                     * o estado atualizado do domínio.
                      */
-
-                    if (
-                        selection.startTime === null
-                    ) {
-
-                        clipSelectionController
-                            .setClipStartTime(
-                                requestedTime
-                            );
-
-                    } else if (
-                        selection.endTime === null
-                    ) {
-
-                        /*
-                         * A Timeline não deve construir
-                         * uma seleção inválida.
-                         *
-                         * Caso o usuário selecione um
-                         * tempo menor ou igual ao início,
-                         * a operação é ignorada e a
-                         * seleção permanece aguardando
-                         * um fim válido.
-                         */
-                        if (
-                            requestedTime <=
-                            selection.startTime
-                        ) {
-
-                            return;
-
-                        }
-
-                        clipSelectionController
-                            .setClipEndTime(
-                                requestedTime
-                            );
-
-                    } else {
-
-                        clipSelectionController
-                            .clearSelection();
-
-                        clipSelectionController
-                            .setClipStartTime(
-                                requestedTime
-                            );
-
-                    }
 
                     updateClipSelectionDisplay();
 
@@ -453,16 +433,16 @@
             });
 
         /*
- * ============================================================
- * FASE 5.1
- * Funções privadas do Composition Root
- *
- * Estas funções pertencem exclusivamente ao
- * Media Workspace e são utilizadas pelas fases
- * subsequentes para sincronizar a interface com
- * o estado atual do domínio.
- * ============================================================
- */
+         * ============================================================
+         * FASE 5.1
+         * Funções privadas do Composition Root
+         *
+         * Estas funções pertencem exclusivamente ao
+         * Media Workspace e são utilizadas pelas fases
+         * subsequentes para sincronizar a interface com
+         * o estado atual do domínio.
+         * ============================================================
+         */
 
         function handleSelectionValidation(
             validationResult,
@@ -547,12 +527,37 @@
 
             const indicator =
                 clipSelectionController
-                    .hasSelection()
+                    .hasActiveSelection()
                     ? "☑"
                     : "☐";
 
+            let selectionLabel =
+                "Nenhuma seleção";
+
+            if (
+                selection.startTime !== null &&
+                selection.endTime === null
+            ) {
+
+                selectionLabel =
+                    "Seleção em andamento";
+
+            }
+            else if (
+
+                selection.startTime !== null &&
+
+                selection.endTime !== null
+
+            ) {
+
+                selectionLabel =
+                    "Seleção Atual";
+
+            }
+
             clipSelectionDisplay.innerText =
-                `${indicator} Seleção Atual | Início: ${startTime} | Fim: ${endTime} | Duração: ${duration}`;
+                `${indicator} ${selectionLabel} | Início: ${startTime} | Fim: ${endTime} | Duração: ${duration}`;
         }
 
 

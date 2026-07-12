@@ -115,12 +115,17 @@ function createMediaOperationsController() {
         }
 
         if (
-            selection.endTime == null
+
+            selection.startTime == null &&
+
+            selection.endTime != null
+
         ) {
 
             violations.push(
-                "missing_end"
+                "missing_start"
             );
+
         }
 
         if (
@@ -154,17 +159,39 @@ function createMediaOperationsController() {
 
         const operations = [];
 
+        const hasStart =
+            selection.startTime != null;
+
+        const hasEnd =
+            selection.endTime != null;
+
+
+        /*
+         * EMPTY_SELECTION
+         */
         if (
-            selection.startTime == null
+            !hasStart &&
+            !hasEnd
         ) {
 
             operations.push(
                 "DEFINE_SELECTION_START"
             );
+
+            return {
+
+                operations
+
+            };
         }
 
+
+        /*
+         * OPEN_SELECTION
+         */
         if (
-            selection.startTime != null
+            hasStart &&
+            !hasEnd
         ) {
 
             operations.push(
@@ -174,58 +201,41 @@ function createMediaOperationsController() {
             operations.push(
                 window.ClipOperation.CLEAR_SELECTION
             );
+
+            return {
+
+                operations
+
+            };
         }
 
+
+        /*
+         * COMPLETED_SELECTION
+         */
         if (
-            selection.endTime != null
+            hasStart &&
+            hasEnd
         ) {
 
-            if (
-                selection.startTime == null
-            ) {
+            operations.push(
+                window.ClipOperation.CLEAR_SELECTION
+            );
 
-                operations.push(
-                    "DEFINE_SELECTION_START"
-                );
-            }
+            return {
 
-            if (
-                !operations.includes(
-                    window.ClipOperation.CLEAR_SELECTION
-                )
-            ) {
+                operations
 
-                operations.push(
-                    window.ClipOperation.CLEAR_SELECTION
-                );
-            }
+            };
         }
 
-        if (
-
-            selection.startTime != null &&
-
-            selection.endTime != null
-
-        ) {
-
-            if (
-                !operations.includes(
-                    "DEFINE_SELECTION_START"
-                )
-            ) {
-
-                operations.push(
-                    "DEFINE_SELECTION_START"
-                );
-            }
-        }
 
         return {
 
             operations
 
         };
+
     }
 
     function getApi() {

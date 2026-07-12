@@ -40,6 +40,7 @@ let timelineView = null;
 
 let onSeekRequested = null;
 let onSelectionStartRequested = null;
+let onTimelineInteractionRequested = null;
 
 /*
  * Estado operacional utilizado exclusivamente pelo
@@ -139,9 +140,37 @@ function initialize({
         timelineTrack.addEventListener(
             "pointerdown",
 
-            () => {
+            event => {
 
                 isPointerInteractionActive = true;
+
+                if (!onTimelineInteractionRequested) {
+                    return;
+                }
+
+                const timelinePosition =
+
+                    timelineController
+                        ?.resolveTimelinePosition({
+
+                            clientX: event.clientX
+
+                        });
+
+                if (!timelinePosition) {
+                    return;
+                }
+
+                const timelineInteraction = {
+
+                    interactionTime:
+                    timelinePosition.time
+
+                };
+
+                onTimelineInteractionRequested(
+                    timelineInteraction
+                );
 
             }
         );
@@ -292,6 +321,15 @@ function setSelectionStartHandler({
         handler;
 }
 
+function setTimelineInteractionHandler({
+                                           handler
+                                       }) {
+
+    onTimelineInteractionRequested =
+        handler;
+
+}
+
 function updateCurrentTime({
                                currentTime
                            }) {
@@ -315,6 +353,7 @@ window.TimelineWorkspace = {
 
     setSeekHandler,
     setSelectionStartHandler,
+    setTimelineInteractionHandler,
 
     updateCurrentTime
 

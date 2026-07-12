@@ -218,8 +218,7 @@ function renderVideoWorkspace(
                         "
                     >
                         Limpar Seleção
-                    </button>
-            
+                    </button>            
                 </div>
             
                 <div
