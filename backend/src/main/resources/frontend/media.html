@@ -29,6 +29,7 @@
 <script src="content-workspace/state/workspaceState.js"></script>
 <script src="content-workspace/renderers/videoWorkspaceRenderer.js"></script>
 <script src="content-workspace/clip/clipSelectionController.js"></script>
+<script src="content-workspace/selection-workspace/selectionWorkspace.js"></script>
 <script src="content-workspace/selection-editing/selectionEditingController.js"></script>
 <script src="content-workspace/clip/clipOperation.js"></script>
 <script src="content-workspace/clip/operationResult.js"></script>
@@ -319,6 +320,14 @@
                     window.ContentWorkspaceState
                 );
 
+        const selectionWorkspace =
+            window.SelectionWorkspace
+                .createSelectionWorkspace({
+
+                    clipSelectionController
+
+                });
+
         const selectionEditingController =
             window.SelectionEditingController
                 .createSelectionEditingController({
@@ -422,7 +431,7 @@
                      * a representação visual com o estado atualizado do domínio.
                      */
                     const selection =
-                        clipSelectionController
+                        selectionWorkspace
                             .getSelection();
 
                     timelineController
@@ -465,7 +474,7 @@
                         );
 
                     const selection =
-                        clipSelectionController
+                        selectionWorkspace
                             .getSelection();
 
                     timelineController
@@ -522,7 +531,7 @@
                         );
 
                     const selection =
-                        clipSelectionController
+                        selectionWorkspace
                             .getSelection();
 
                     timelineController
@@ -598,6 +607,16 @@
             ) {
                 return;
             }
+
+            /*
+             * S-03
+             * A atualização da representação da Selection no Media Workspace
+             * permanece sob responsabilidade do Composition Root.
+             *
+             * Esta leitura direta do estado da Selection não é migrada para
+             * SelectionWorkspace porque pertence à sincronização específica
+             * da UI e à integração com Media Operations.
+             */
 
             const selection =
                 clipSelectionController
