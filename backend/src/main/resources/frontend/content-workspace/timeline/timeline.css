@@ -158,3 +158,68 @@
 
     font-variant-numeric: tabular-nums;
 }
+/* ==========================================================
+   Selection Layer
+   ========================================================== */
+
+.timeline-selection-layer {
+
+    position: absolute;
+
+    inset: 0;
+
+    pointer-events: none;
+
+    z-index: 15;
+}
+
+.timeline-selection-region {
+
+    position: absolute;
+
+    top: 0;
+
+    bottom: 0;
+
+    pointer-events: auto;
+}
+
+.timeline-selection-handle {
+
+    position: absolute;
+
+    top: 50%;
+
+    width: 10px;
+
+    height: 20px;
+
+    border-radius: 3px;
+
+    background: #1976d2;
+
+    transform: translate(-50%, -50%);
+
+    pointer-events: auto;
+}
+
+/*
+ * FOUNDATION
+ *
+ * Os Handles representam a primeira materialização
+ * visual dos pontos oficiais de edição da seleção.
+ *
+ * Nesta Foundation permanecem exclusivamente como
+ * representação gráfica.
+ *
+ * A interação será introduzida na
+ * Selection Resize Foundation.
+ */
+
+.timeline-selection-handle-start {
+
+}
+
+.timeline-selection-handle-end {
+
+}

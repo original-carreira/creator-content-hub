@@ -41,6 +41,13 @@ let timelineView = null;
 let onSeekRequested = null;
 let onSelectionStartRequested = null;
 let onTimelineInteractionRequested = null;
+let onHandleInteractionRequested = null;
+let onHandleMoveInteractionRequested = null;
+let onHandleReleaseInteractionRequested = null;
+let onSelectionMoveInteractionRequested = null;
+let onSelectionMoveUpdateInteractionRequested =  null;
+let onSelectionMoveReleaseInteractionRequested = null;
+
 
 /*
  * Estado operacional utilizado exclusivamente pelo
@@ -58,6 +65,28 @@ let onTimelineInteractionRequested = null;
  * Composition Root da Timeline.
  */
 let isPointerInteractionActive = false;
+let activeSelectionDragTarget = null;
+
+function resolveInteractionTime(clientX) {
+
+    const timelinePosition =
+        timelineController
+            ?.resolveTimelinePosition({
+
+                clientX
+
+            });
+
+    return timelinePosition?.time ?? null;
+}
+
+function isSelectionRegionTarget(target) {
+
+    return (
+        target?.id ===
+        "timelineSelectionRegion"
+    );
+}
 
 function renderTimeline({
                             videoAsset,
@@ -128,7 +157,193 @@ function initialize({
             "timelineTrack"
         );
 
+    const selectionLayer =
+        document.getElementById(
+            "timelineSelectionLayer"
+        );
+
     if (timelineTrack) {
+
+        selectionLayer?.addEventListener(
+
+            "pointerdown",
+
+            event => {
+
+                if (
+                    !isSelectionRegionTarget(
+                        event.target
+                    )
+                ) {
+                    return;
+                }
+
+                event.stopPropagation();
+
+                activeSelectionDragTarget =
+                    event.target;
+
+                event.target.setPointerCapture(
+                    event.pointerId
+                );
+
+                const interactionTime =
+                    resolveInteractionTime(
+                        event.clientX
+                    );
+
+                if (
+                    interactionTime === null
+                ) {
+                    return;
+                }
+
+                const selectionMoveInteraction = {
+
+                    selectionRegionId:
+                    event.target.id,
+
+                    interactionTime
+
+                };
+
+                if (
+                    !onSelectionMoveInteractionRequested
+                ) {
+                    return;
+                }
+
+                onSelectionMoveInteractionRequested(
+                    selectionMoveInteraction
+                );
+
+            }
+
+        );
+
+        selectionLayer?.addEventListener(
+
+            "pointermove",
+
+            event => {
+
+                if (
+                    !activeSelectionDragTarget ||
+                    !isSelectionRegionTarget(
+                        event.target
+                    )
+                ) {
+                    return;
+                }
+
+                event.stopPropagation();
+
+                const interactionTime =
+                    resolveInteractionTime(
+                        event.clientX
+                    );
+
+                if (
+                    interactionTime === null
+                ) {
+                    return;
+                }
+
+                const selectionMoveUpdateInteraction = {
+
+                    selectionRegionId:
+                    event.target.id,
+
+                    interactionTime
+
+                };
+
+                if (
+
+                    !onSelectionMoveUpdateInteractionRequested
+
+                ) {
+
+                    return;
+
+                }
+
+                onSelectionMoveUpdateInteractionRequested(
+                    selectionMoveUpdateInteraction
+                );
+
+            }
+
+        );
+
+        selectionLayer?.addEventListener(
+
+            "pointerup",
+
+            event => {
+
+                if (
+                    !activeSelectionDragTarget ||
+                    !isSelectionRegionTarget(
+                        event.target
+                    )
+                ) {
+                    return;
+                }
+
+                event.stopPropagation();
+
+                event.target.releasePointerCapture(
+                    event.pointerId
+                );
+
+                activeSelectionDragTarget =
+                    null;
+
+                const selectionMoveReleaseInteraction = {
+
+                    selectionRegionId:
+                    event.target.id
+
+                };
+
+                if (
+
+                    !onSelectionMoveReleaseInteractionRequested
+
+                ) {
+
+                    return;
+
+                }
+
+                onSelectionMoveReleaseInteractionRequested(
+                    selectionMoveReleaseInteraction
+                );
+
+            }
+
+        );
+
+        selectionLayer?.addEventListener(
+
+            "click",
+
+            event => {
+
+                if (
+                    !isSelectionRegionTarget(
+                        event.target
+                    )
+                ) {
+                    return;
+                }
+
+                event.stopPropagation();
+
+            }
+
+        );
 
         /*
          * Coordenação do ciclo de vida da interação do ponteiro.
@@ -136,7 +351,167 @@ function initialize({
          * O TimelineWorkspace é responsável apenas por acompanhar
          * o início e o término da interação durante a coordenação
          * dos eventos do DOM.
+         * ============================================================
+         * Selection Handle Interaction
+         *
+         * Foundation para futuras interações dos
+         * Selection Handles.
+         *
+         * Nesta etapa apenas o ponto oficial de
+         * entrada das interações é materializado.
+         *
+         * Nenhuma decisão de domínio é executada.
          */
+        selectionLayer?.addEventListener(
+
+            "pointerdown",
+
+            event => {
+
+                const handle =
+                    event.target.dataset.handle;
+
+                if (!handle) {
+                    return;
+                }
+
+                event.stopPropagation();
+
+                event.target.setPointerCapture(
+                    event.pointerId
+                );
+
+                const interactionTime =
+                    resolveInteractionTime(
+                        event.clientX
+                    );
+
+                if (
+                    interactionTime === null
+                ) {
+                    return;
+                }
+
+                const handleInteraction = {
+
+                    handle,
+
+                    interactionTime
+
+                };
+
+                if (
+                    !onHandleInteractionRequested
+                ) {
+                    return;
+                }
+
+                onHandleInteractionRequested(
+                    handleInteraction
+                );
+
+            }
+
+        );
+
+        selectionLayer?.addEventListener(
+
+            "pointermove",
+
+            event => {
+
+                const handle =
+                    event.target.dataset.handle;
+
+                if (!handle) {
+                    return;
+                }
+
+                const interactionTime =
+                    resolveInteractionTime(
+                        event.clientX
+                    );
+
+                if (
+                    interactionTime === null
+                ) {
+                    return;
+                }
+
+                const handleMoveInteraction = {
+
+                    handle,
+
+                    interactionTime
+
+                };
+
+                if (
+                    !onHandleMoveInteractionRequested
+                ) {
+                    return;
+                }
+
+                onHandleMoveInteractionRequested(
+                    handleMoveInteraction
+                );
+
+            }
+
+        );
+
+        selectionLayer?.addEventListener(
+
+            "pointerup",
+
+            event => {
+
+                const handle =
+                    event.target.dataset.handle;
+
+                if (!handle) {
+                    return;
+                }
+
+                if (
+                    event.target.hasPointerCapture(
+                        event.pointerId
+                    )
+                ) {
+
+                    event.target.releasePointerCapture(
+                        event.pointerId
+                    );
+
+                }
+
+                const interactionTime =
+                    resolveInteractionTime(
+                        event.clientX
+                    );
+
+                const handleReleaseInteraction = {
+
+                    handle,
+
+                    interactionTime
+
+                };
+
+                if (
+                    !onHandleReleaseInteractionRequested
+                ) {
+                    return;
+                }
+
+                onHandleReleaseInteractionRequested(
+                    handleReleaseInteraction
+                );
+
+            }
+
+        );
+
         timelineTrack.addEventListener(
             "pointerdown",
 
@@ -330,6 +705,60 @@ function setTimelineInteractionHandler({
 
 }
 
+function setHandleInteractionHandler({
+                                         handler
+                                     }) {
+
+    onHandleInteractionRequested =
+        handler;
+
+}
+
+function setHandleMoveInteractionHandler({
+                                             handler
+                                         }) {
+
+    onHandleMoveInteractionRequested =
+        handler;
+
+}
+
+function setHandleReleaseInteractionHandler({
+                                                handler
+                                            }) {
+
+    onHandleReleaseInteractionRequested =
+        handler;
+
+}
+
+function setSelectionMoveInteractionHandler({
+                                                handler
+                                            }) {
+
+    onSelectionMoveInteractionRequested =
+        handler;
+
+}
+
+function setSelectionMoveUpdateInteractionHandler({
+                                                      handler
+                                                  }) {
+
+    onSelectionMoveUpdateInteractionRequested =
+        handler;
+
+}
+
+function setSelectionMoveReleaseInteractionHandler({
+                                                       handler
+                                                   }) {
+
+    onSelectionMoveReleaseInteractionRequested =
+        handler;
+
+}
+
 function updateCurrentTime({
                                currentTime
                            }) {
@@ -350,11 +779,15 @@ window.TimelineWorkspace = {
 
     renderTimeline,
     initialize,
-
     setSeekHandler,
     setSelectionStartHandler,
     setTimelineInteractionHandler,
-
+    setHandleInteractionHandler,
+    setHandleMoveInteractionHandler,
+    setHandleReleaseInteractionHandler,
+    setSelectionMoveInteractionHandler,
+    setSelectionMoveUpdateInteractionHandler,
+    setSelectionMoveReleaseInteractionHandler,
     updateCurrentTime
 
 };

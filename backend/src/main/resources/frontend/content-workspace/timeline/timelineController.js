@@ -45,7 +45,11 @@ function createTimelineController() {
 
         duration: null,
 
-        currentTime: null
+        currentTime: null,
+
+        selections: [],
+
+        activeSelectionId: null
     };
 
     function formatDuration(seconds) {
@@ -191,6 +195,29 @@ function createTimelineController() {
 
     }
 
+    function updateSelections({
+                                  selections,
+                                  activeSelectionId = null
+                              }) {
+
+        timelineState.selections =
+            selections;
+
+        timelineState.activeSelectionId =
+            activeSelectionId;
+
+        if (!timelineView) {
+            return;
+        }
+
+        timelineView.updateTimeline({
+
+            timelineState
+
+        });
+
+    }
+
     function updatePointerPosition({
                                        clientX
                                    }) {
@@ -252,6 +279,7 @@ function createTimelineController() {
         buildTimelineViewModel,
         updateCurrentTime,
         updateDuration,
+        updateSelections,
         updatePointerPosition,
         requestSeek,
         resolveTimelinePosition,
