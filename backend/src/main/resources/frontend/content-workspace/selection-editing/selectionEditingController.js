@@ -83,6 +83,10 @@ function createSelectionEditingController(
 
         editingSession: {
 
+            resizeSession: null,
+
+            moveSession: null
+
         },
 
         interactionResolution: null,
@@ -181,10 +185,17 @@ function createSelectionEditingController(
         timelineInteraction
     ) {
 
-        const interactionResolution =
+        processInteractionResolution(
             resolveInteraction(
                 timelineInteraction
-            );
+            )
+        );
+
+    }
+
+    function processInteractionResolution(
+        interactionResolution
+    ) {
 
         state.interactionResolution =
             interactionResolution;
@@ -193,12 +204,10 @@ function createSelectionEditingController(
             clipSelectionController
                 .getSelection();
 
-
         const selectionState =
             resolveSelectionState(
                 clipSelection
             );
-
 
         const editingDecision =
             resolveEditingDecision({
@@ -216,6 +225,79 @@ function createSelectionEditingController(
 
         executeEditingDecision(
             editingDecision
+        );
+
+        return editingDecision;
+    }
+
+    function handleHandleInteraction(
+        handleInteraction
+    ) {
+
+        processInteractionResolution(
+            resolveHandleInteraction(
+                handleInteraction
+            )
+        );
+
+    }
+
+    function handleHandleMoveInteraction(
+        handleMoveInteraction
+    ) {
+
+        processInteractionResolution(
+            resolveHandleMoveInteraction(
+                handleMoveInteraction
+            )
+        );
+
+    }
+
+    function handleHandleReleaseInteraction(
+        handleReleaseInteraction
+    ) {
+
+        processInteractionResolution(
+            resolveHandleReleaseInteraction(
+                handleReleaseInteraction
+            )
+        );
+
+    }
+
+    function handleSelectionMoveInteraction(
+        selectionMoveInteraction
+    ) {
+
+        processInteractionResolution(
+            resolveSelectionMoveInteraction(
+                selectionMoveInteraction
+            )
+        );
+
+    }
+
+    function handleSelectionMoveUpdateInteraction(
+        selectionMoveUpdateInteraction
+    ) {
+
+        processInteractionResolution(
+            resolveSelectionMoveUpdateInteraction(
+                selectionMoveUpdateInteraction
+            )
+        );
+
+    }
+
+    function handleSelectionMoveReleaseInteraction(
+        selectionMoveReleaseInteraction
+    ) {
+
+        processInteractionResolution(
+            resolveSelectionMoveReleaseInteraction(
+                selectionMoveReleaseInteraction
+            )
         );
 
     }
@@ -280,6 +362,152 @@ function createSelectionEditingController(
             target,
 
             hitLocation
+
+        };
+
+        return interactionResolution;
+
+    }
+
+    function resolveHandleInteraction(
+        handleInteraction
+    ) {
+
+        const interactionType =
+            "HANDLE_POINTER_DOWN";
+
+        const handle =
+            handleInteraction.handle;
+
+        const interactionResolution = {
+
+            interactionType,
+
+            handle,
+
+            interactionTime:
+            handleInteraction.interactionTime
+
+        };
+
+        return interactionResolution;
+
+    }
+
+    function resolveHandleMoveInteraction(
+        handleMoveInteraction
+    ) {
+
+        const interactionType =
+            "HANDLE_POINTER_MOVE";
+
+        const handle =
+            handleMoveInteraction.handle;
+
+        const interactionResolution = {
+
+            interactionType,
+
+            handle,
+
+            interactionTime:
+            handleMoveInteraction.interactionTime
+
+        };
+
+        return interactionResolution;
+
+    }
+
+    function resolveHandleReleaseInteraction(
+        handleReleaseInteraction
+    ) {
+
+        const interactionType =
+            "HANDLE_POINTER_UP";
+
+        const handle =
+            handleReleaseInteraction.handle;
+
+        const interactionResolution = {
+
+            interactionType,
+
+            handle,
+
+            interactionTime:
+            handleReleaseInteraction.interactionTime
+
+        };
+
+        return interactionResolution;
+
+    }
+
+    function resolveSelectionMoveInteraction(
+        selectionMoveInteraction
+    ) {
+
+        const interactionType =
+            "SELECTION_POINTER_DOWN";
+
+        const selectionRegionId =
+            selectionMoveInteraction.selectionRegionId;
+
+        const interactionResolution = {
+
+            interactionType,
+
+            selectionRegionId,
+
+            interactionTime:
+            selectionMoveInteraction.interactionTime
+
+        };
+
+        return interactionResolution;
+
+    }
+
+    function resolveSelectionMoveUpdateInteraction(
+        selectionMoveUpdateInteraction
+    ) {
+
+        const interactionType =
+            "SELECTION_POINTER_MOVE";
+
+        const interactionResolution = {
+
+            interactionType,
+
+            selectionRegionId:
+            selectionMoveUpdateInteraction
+                .selectionRegionId,
+
+            interactionTime:
+            selectionMoveUpdateInteraction
+                .interactionTime
+
+        };
+
+        return interactionResolution;
+
+    }
+
+    function resolveSelectionMoveReleaseInteraction(
+        selectionMoveReleaseInteraction
+    ) {
+
+        const interactionType =
+            "SELECTION_POINTER_UP";
+
+        const interactionResolution = {
+
+            interactionType,
+
+            selectionRegionId:
+            selectionMoveReleaseInteraction
+                .selectionRegionId
 
         };
 
@@ -484,12 +712,183 @@ function createSelectionEditingController(
                                     }) {
 
         let operation = null;
+        /*
+         * ============================================================
+         * HANDLE_INTERACTION
+         * ============================================================
+         *
+         * Foundation para futuras operações de
+         * redimensionamento da seleção.
+         */
+        if (
+
+            interactionResolution
+                .interactionType ===
+            "HANDLE_POINTER_DOWN"
+
+        ) {
+
+            let operation = null;
+
+            if (
+
+                interactionResolution.handle ===
+                "start"
+
+            ) {
+
+                operation =
+                    "BEGIN_SELECTION_RESIZE_START";
+
+            }
+
+            else if (
+
+                interactionResolution.handle ===
+                "end"
+
+            ) {
+
+                operation =
+                    "BEGIN_SELECTION_RESIZE_END";
+
+            }
+
+            return createEditingDecision({
+
+                operation,
+
+                interactionResolution
+
+            });
+
+        }
+
+        if (
+
+            interactionResolution
+                .interactionType ===
+            "HANDLE_POINTER_MOVE"
+
+        ) {
+
+            let operation = null;
+
+            if (
+
+                state.editingSession
+                    .resizeSession?.handle ===
+                "start"
+
+            ) {
+
+                operation =
+                    "UPDATE_SELECTION_RESIZE_START";
+
+            }
+
+            else if (
+
+                state.editingSession
+                    .resizeSession?.handle ===
+                "end"
+
+            ) {
+
+                operation =
+                    "UPDATE_SELECTION_RESIZE_END";
+
+            }
+
+            return createEditingDecision({
+
+                operation,
+
+                interactionResolution
+
+            });
+
+        }
+
+        if (
+
+            interactionResolution
+                .interactionType ===
+            "HANDLE_POINTER_UP"
+
+        ) {
+
+            return createEditingDecision({
+
+                operation:
+                    "END_SELECTION_RESIZE",
+
+                interactionResolution
+
+            });
+
+        }
+
+        if (
+
+            interactionResolution
+                .interactionType ===
+            "SELECTION_POINTER_DOWN"
+
+        ) {
+
+            return createEditingDecision({
+
+                operation:
+                    "BEGIN_SELECTION_MOVE",
+
+                interactionResolution
+
+            });
+
+        }
+
+        if (
+
+            interactionResolution
+                .interactionType ===
+            "SELECTION_POINTER_MOVE"
+
+        ) {
+
+            return createEditingDecision({
+
+                operation:
+                    "UPDATE_SELECTION_MOVE",
+
+                interactionResolution
+
+            });
+
+        }
+
+        if (
+
+            interactionResolution
+                .interactionType ===
+            "SELECTION_POINTER_UP"
+
+        ) {
+
+            return createEditingDecision({
+
+                operation:
+                    "END_SELECTION_MOVE",
+
+                interactionResolution
+
+            });
+
+        }
 
         /*
          * ============================================================
          * RESTART_SELECTION_EDITING
-         *
-         * Nova interação sobre seleção completa.
          * ============================================================
          */
 
@@ -638,6 +1037,124 @@ function createSelectionEditingController(
 
                 break;
 
+            case "BEGIN_SELECTION_RESIZE_START":
+
+                state.editingSession.resizeSession = {
+
+                    handle: "start",
+                    state: "ACTIVE",
+                    interactionTime:
+                    editingDecision.interactionTime
+
+                };
+
+                break;
+
+            case "BEGIN_SELECTION_RESIZE_END":
+
+                state.editingSession.resizeSession = {
+
+                    handle: "end",
+                    state: "ACTIVE",
+                    interactionTime:
+                    editingDecision.interactionTime
+
+                };
+
+                break;
+
+            case "BEGIN_SELECTION_MOVE":
+
+                const selection =
+                    clipSelectionController
+                        .getSelection();
+
+                state.editingSession.moveSession = {
+
+                    interactionTime:
+                    editingDecision.interactionTime,
+
+                    startTime:
+                    selection.startTime,
+
+                    endTime:
+                    selection.endTime
+
+                };
+
+                break;
+
+            case "UPDATE_SELECTION_RESIZE_START":
+
+                clipSelectionController
+                    .setClipStartTime(
+                        editingDecision.interactionTime
+                    );
+
+                break;
+
+            case "UPDATE_SELECTION_RESIZE_END":
+
+                clipSelectionController
+                    .setClipEndTime(
+                        editingDecision.interactionTime
+                    );
+
+                break;
+
+            case "UPDATE_SELECTION_MOVE":
+
+                const moveSession =
+                    state.editingSession
+                        .moveSession;
+
+                if (!moveSession) {
+                    break;
+                }
+
+                const interactionTime =
+                    editingDecision.interactionTime;
+
+                const anchorInteractionTime =
+                    moveSession.interactionTime;
+
+                const interactionDelta =
+                    interactionTime -
+                    anchorInteractionTime;
+
+                const newStartTime =
+                    moveSession.startTime +
+                    interactionDelta;
+
+                const newEndTime =
+                    moveSession.endTime +
+                    interactionDelta;
+
+                clipSelectionController
+                    .setSelection(
+
+                        newStartTime,
+
+                        newEndTime
+
+                    );
+
+                break;
+
+            case "END_SELECTION_RESIZE":
+
+                state.editingSession.resizeSession =
+                    null;
+
+                break;
+
+            case "END_SELECTION_MOVE":
+
+                state.editingSession.moveSession =
+                    null;
+
+                break;
+
             default:
 
                 break;
@@ -722,8 +1239,13 @@ function createSelectionEditingController(
 
     return {
 
-        handleTimelineInteraction
-
+        handleTimelineInteraction,
+        handleHandleInteraction,
+        handleHandleMoveInteraction,
+        handleHandleReleaseInteraction,
+        handleSelectionMoveInteraction,
+        handleSelectionMoveUpdateInteraction,
+        handleSelectionMoveReleaseInteraction,
     };
 
 }

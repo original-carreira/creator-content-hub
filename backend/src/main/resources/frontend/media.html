@@ -417,18 +417,141 @@
                             timelineInteraction
                         );
 
-                    /*
-                     * S-02
-                     *
-                     * O Composition Root permanece
-                     * responsável por sincronizar
-                     * a representação visual com
-                     * o estado atualizado do domínio.
+                    /* S-02
+                     * O Composition Root permanece responsável por sincronizar
+                     * a representação visual com o estado atualizado do domínio.
                      */
+                    const selection =
+                        clipSelectionController
+                            .getSelection();
+
+                    timelineController
+                        ?.updateSelections({
+
+                            selections: [
+                                selection
+                            ]
+
+                        });
 
                     updateClipSelectionDisplay();
 
                 }
+
+            });
+
+        window.TimelineWorkspace
+            .setHandleInteractionHandler({
+
+                handler: handleInteraction => {
+
+                    selectionEditingController
+                        .handleHandleInteraction(
+                            handleInteraction
+                        );
+
+                }
+
+            });
+
+        window.TimelineWorkspace
+            .setHandleMoveInteractionHandler({
+
+                handler: handleMoveInteraction => {
+
+                    selectionEditingController
+                        .handleHandleMoveInteraction(
+                            handleMoveInteraction
+                        );
+
+                    const selection =
+                        clipSelectionController
+                            .getSelection();
+
+                    timelineController
+                        ?.updateSelections({
+
+                            selections: [
+                                selection
+                            ]
+
+                        });
+
+                    updateClipSelectionDisplay();
+
+                }
+
+            });
+
+        window.TimelineWorkspace
+            .setHandleReleaseInteractionHandler({
+
+                handler: handleReleaseInteraction => {
+
+                    selectionEditingController
+                        .handleHandleReleaseInteraction(
+                            handleReleaseInteraction
+                        );
+
+                }
+
+            });
+
+        window.TimelineWorkspace
+            .setSelectionMoveInteractionHandler({
+
+                handler: selectionMoveInteraction => {
+
+                    selectionEditingController
+                        .handleSelectionMoveInteraction(
+                            selectionMoveInteraction
+                        );
+
+                }
+
+            });
+
+        window.TimelineWorkspace
+            .setSelectionMoveUpdateInteractionHandler({
+
+                handler: selectionMoveUpdateInteraction => {
+
+                    selectionEditingController
+                        .handleSelectionMoveUpdateInteraction(
+                            selectionMoveUpdateInteraction
+                        );
+
+                    const selection =
+                        clipSelectionController
+                            .getSelection();
+
+                    timelineController
+                        ?.updateSelections({
+
+                            selections: [
+                                selection
+                            ]
+
+                        });
+
+                    updateClipSelectionDisplay();
+
+                }
+
+            });
+
+        window.TimelineWorkspace
+            .setSelectionMoveReleaseInteractionHandler({
+
+                handler:
+                    selectionMoveReleaseInteraction => {
+
+                    selectionEditingController
+                        .handleSelectionMoveReleaseInteraction(
+                            selectionMoveReleaseInteraction
+                        );
+
+                    }
 
             });
 
