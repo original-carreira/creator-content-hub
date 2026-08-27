@@ -218,7 +218,20 @@ function renderVideoWorkspace(
                         "
                     >
                         Limpar Seleção
-                    </button>            
+                    </button>
+
+                    <button
+                        type="button"
+                        id="clipSaveSelectionButton"
+                        style="
+                            min-width:120px;
+                            padding:8px 12px;
+                            border-radius:8px;
+                        "
+                    >
+                        Salvar Seleção
+                    </button>
+
                 </div>
             
                 <div

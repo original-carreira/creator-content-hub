@@ -269,6 +269,11 @@
                 "clipClearSelectionButton"
             );
 
+        const saveSelectionButton =
+            document.getElementById(
+                "clipSaveSelectionButton"
+            );
+
         const durationDisplay =
             document.getElementById(
                 "videoDurationDisplay"
@@ -585,7 +590,8 @@
 
         function handleSelectionValidation(
             validationResult,
-            availableOperations
+            availableOperations,
+            selection
         ) {
 
             const operations =
@@ -604,6 +610,12 @@
             clearSelectionButton.disabled =
                 !operations.includes(
                     window.ClipOperation.CLEAR_SELECTION
+                );
+
+            saveSelectionButton.disabled =
+                !(
+                    validationResult.isValid &&
+                    selection.endTime !== null
                 );
         }
 
@@ -643,7 +655,8 @@
 
             handleSelectionValidation(
                 validationResult,
-                availableOperations
+                availableOperations,
+                selection
             );
 
             const startTime =
@@ -973,6 +986,35 @@
                             .clearSelection();
 
                         updateClipSelectionDisplay();
+
+                    }
+
+                );
+
+        }
+
+        if (
+            saveSelectionButton
+        ) {
+
+            saveSelectionButton
+                .addEventListener(
+
+                    "click",
+
+                    () => {
+
+                        const materialized =
+                            selectionWorkspace
+                                .materializeSelection();
+
+                        if (
+                            materialized
+                        ) {
+
+                            updateClipSelectionDisplay();
+
+                        }
 
                     }
 

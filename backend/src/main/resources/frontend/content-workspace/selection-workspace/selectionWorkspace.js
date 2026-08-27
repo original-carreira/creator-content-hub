@@ -18,11 +18,25 @@ function createSelectionWorkspace(
         return selectionCollectionController;
     }
 
+    function materializeSelection() {
+
+        const selection =
+            clipSelectionController
+                .getSelection();
+
+        return selectionCollectionController
+            .addSelection(
+                selection
+            );
+    }
+
     return {
 
         getSelection,
 
-        getSelectionCollection
+        getSelectionCollection,
+
+        materializeSelection
 
     };
 }
