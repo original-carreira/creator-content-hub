@@ -29,6 +29,7 @@
 <script src="content-workspace/state/workspaceState.js"></script>
 <script src="content-workspace/renderers/videoWorkspaceRenderer.js"></script>
 <script src="content-workspace/clip/clipSelectionController.js"></script>
+<script src="content-workspace/selection-collection/selectionCollectionController.js"></script>
 <script src="content-workspace/selection-workspace/selectionWorkspace.js"></script>
 <script src="content-workspace/selection-editing/selectionEditingController.js"></script>
 <script src="content-workspace/clip/clipOperation.js"></script>
@@ -320,11 +321,17 @@
                     window.ContentWorkspaceState
                 );
 
+        const selectionCollectionController =
+            window.SelectionCollectionController
+                .createSelectionCollectionController();
+
         const selectionWorkspace =
             window.SelectionWorkspace
                 .createSelectionWorkspace({
 
-                    clipSelectionController
+                    clipSelectionController,
+
+                    selectionCollectionController
 
                 });
 

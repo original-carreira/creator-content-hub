@@ -3,7 +3,8 @@ function createSelectionWorkspace(
 ) {
 
     const {
-        clipSelectionController
+        clipSelectionController,
+        selectionCollectionController
     } = dependencies;
 
     function getSelection() {
@@ -12,9 +13,16 @@ function createSelectionWorkspace(
             .getSelection();
     }
 
+    function getSelectionCollection() {
+
+        return selectionCollectionController;
+    }
+
     return {
 
-        getSelection
+        getSelection,
+
+        getSelectionCollection
 
     };
 }
