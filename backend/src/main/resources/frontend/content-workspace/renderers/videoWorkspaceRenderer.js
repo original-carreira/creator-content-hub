@@ -250,6 +250,90 @@ function renderVideoWorkspace(
                     >
                         ☐ Seleção Atual | Início: -- | Fim: -- | Duração: --
                     </div>
+
+                <section
+                    aria-labelledby="materializedSelectionsHeading"
+                    style="
+                        margin-top:16px;
+                    "
+                >
+                    <div
+                        style="
+                            display:flex;
+                            justify-content:space-between;
+                            align-items:center;
+                            gap:12px;
+                        "
+                    >
+                        <strong
+                            id="materializedSelectionsHeading"
+                        >
+                            Selections materializadas
+                        </strong>
+
+                        <button
+                            type="button"
+                            id="clearAllMaterializedSelectionsButton"
+                            disabled
+                        >
+                            Limpar todas
+                        </button>
+                    </div>
+
+                    <div
+                        role="table"
+                        aria-label="Selections materializadas"
+                        style="
+                            margin-top:8px;
+                        "
+                    >
+                        <div
+                            role="row"
+                            style="
+                                display:grid;
+                                grid-template-columns:1.4fr 1fr 1fr 1fr auto;
+                                gap:8px;
+                                padding:6px 0;
+                                border-bottom:1px solid #ddd;
+                                font-size:12px;
+                                font-weight:600;
+                            "
+                        >
+                            <span role="columnheader">ID</span>
+                            <span role="columnheader">Início</span>
+                            <span role="columnheader">Fim</span>
+                            <span role="columnheader">Duração</span>
+                            <span role="columnheader">Ação</span>
+                        </div>
+
+                        <div
+                            id="materializedSelectionsList"
+                            role="rowgroup"
+                            aria-live="polite"
+                        >
+                            <div
+                                role="row"
+                                style="
+                                    padding:8px 0;
+                                    color:#666;
+                                    font-size:13px;
+                                "
+                            >
+                                <span role="cell">Nenhuma Selection materializada.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div
+                        id="materializedSelectionExportFeedback"
+                        role="status"
+                        aria-live="polite"
+                        style="
+                            margin-top:8px;
+                            font-size:13px;
+                        "
+                    ></div>
+                </section>
             
                 </div>
             

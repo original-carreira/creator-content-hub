@@ -66,6 +66,9 @@ let onSelectionMoveReleaseInteractionRequested = null;
  */
 let isPointerInteractionActive = false;
 let activeSelectionDragTarget = null;
+let activeSelectionDragPointerId = null;
+let activeHandleDragTarget = null;
+let activeHandleDragPointerId = null;
 
 function resolveInteractionTime(clientX) {
 
@@ -83,9 +86,172 @@ function resolveInteractionTime(clientX) {
 function isSelectionRegionTarget(target) {
 
     return (
-        target?.id ===
-        "timelineSelectionRegion"
+        !isSelectionHandleTarget(target) &&
+        (
+            Boolean(
+                target?.dataset?.selectionId
+            ) ||
+            target?.dataset?.selectionType === "current" ||
+            target?.id === "timelineSelectionRegion"
+        )
     );
+}
+
+function getSelectionId(target) {
+
+    const selectionId =
+        target?.dataset?.selectionId;
+
+    return selectionId
+        ? selectionId
+        : null;
+}
+
+function isSelectionHandleTarget(target) {
+
+    return (
+        target?.dataset?.handle === "start" ||
+        target?.dataset?.handle === "end"
+    );
+}
+
+function hasActiveSelectionPointerDrag() {
+
+    return (
+        activeSelectionDragTarget !== null ||
+        activeHandleDragTarget !== null
+    );
+}
+
+function isActiveSelectionDrag(event) {
+
+    return (
+        activeSelectionDragTarget !== null &&
+        event.target === activeSelectionDragTarget &&
+        event.pointerId === activeSelectionDragPointerId
+    );
+}
+
+function isActiveHandleDrag(event) {
+
+    return (
+        activeHandleDragTarget !== null &&
+        event.target === activeHandleDragTarget &&
+        event.pointerId === activeHandleDragPointerId
+    );
+}
+
+function finishSelectionDrag(
+    event,
+    releasePointerCapture = false
+) {
+
+    if (!isActiveSelectionDrag(event)) {
+        return false;
+    }
+
+    const target =
+        activeSelectionDragTarget;
+
+    const selectionMoveReleaseInteraction = {
+
+        selectionRegionId:
+        target.id,
+
+        selectionId:
+        getSelectionId(target)
+
+    };
+
+    activeSelectionDragTarget =
+        null;
+
+    activeSelectionDragPointerId =
+        null;
+
+    if (
+        releasePointerCapture &&
+        target.hasPointerCapture(
+            event.pointerId
+        )
+    ) {
+
+        target.releasePointerCapture(
+            event.pointerId
+        );
+
+    }
+
+    if (
+        onSelectionMoveReleaseInteractionRequested
+    ) {
+
+        onSelectionMoveReleaseInteractionRequested(
+            selectionMoveReleaseInteraction
+        );
+
+    }
+
+    return true;
+}
+
+function finishHandleDrag(
+    event,
+    releasePointerCapture = false
+) {
+
+    if (!isActiveHandleDrag(event)) {
+        return false;
+    }
+
+    const target =
+        activeHandleDragTarget;
+
+    const handleReleaseInteraction = {
+
+        handle:
+        target.dataset.handle,
+
+        selectionId:
+        getSelectionId(target),
+
+        interactionTime:
+        resolveInteractionTime(
+            event.clientX
+        )
+
+    };
+
+    activeHandleDragTarget =
+        null;
+
+    activeHandleDragPointerId =
+        null;
+
+    if (
+        releasePointerCapture &&
+        target.hasPointerCapture(
+            event.pointerId
+        )
+    ) {
+
+        target.releasePointerCapture(
+            event.pointerId
+        );
+
+    }
+
+    if (
+        onHandleReleaseInteractionRequested
+    ) {
+
+        onHandleReleaseInteractionRequested(
+            handleReleaseInteraction
+        );
+
+    }
+
+    return true;
 }
 
 function renderTimeline({
@@ -171,6 +337,18 @@ function initialize({
             event => {
 
                 if (
+                    isSelectionHandleTarget(
+                        event.target
+                    )
+                ) {
+
+                    event.stopPropagation();
+
+                    return;
+
+                }
+
+                if (
                     !isSelectionRegionTarget(
                         event.target
                     )
@@ -178,10 +356,21 @@ function initialize({
                     return;
                 }
 
+                if (hasActiveSelectionPointerDrag()) {
+
+                    event.stopPropagation();
+
+                    return;
+
+                }
+
                 event.stopPropagation();
 
                 activeSelectionDragTarget =
                     event.target;
+
+                activeSelectionDragPointerId =
+                    event.pointerId;
 
                 event.target.setPointerCapture(
                     event.pointerId
@@ -195,13 +384,23 @@ function initialize({
                 if (
                     interactionTime === null
                 ) {
+
+                    finishSelectionDrag(
+                        event,
+                        true
+                    );
+
                     return;
+
                 }
 
                 const selectionMoveInteraction = {
 
                     selectionRegionId:
                     event.target.id,
+
+                    selectionId:
+                    getSelectionId(event.target),
 
                     interactionTime
 
@@ -229,6 +428,7 @@ function initialize({
 
                 if (
                     !activeSelectionDragTarget ||
+                    !isActiveSelectionDrag(event) ||
                     !isSelectionRegionTarget(
                         event.target
                     )
@@ -253,6 +453,9 @@ function initialize({
 
                     selectionRegionId:
                     event.target.id,
+
+                    selectionId:
+                    getSelectionId(event.target),
 
                     interactionTime
 
@@ -283,46 +486,47 @@ function initialize({
             event => {
 
                 if (
-                    !activeSelectionDragTarget ||
-                    !isSelectionRegionTarget(
-                        event.target
-                    )
+                    !isActiveSelectionDrag(event) ||
+                    !isSelectionRegionTarget(event.target)
                 ) {
                     return;
                 }
 
                 event.stopPropagation();
 
-                event.target.releasePointerCapture(
-                    event.pointerId
-                );
-
-                activeSelectionDragTarget =
-                    null;
-
-                const selectionMoveReleaseInteraction = {
-
-                    selectionRegionId:
-                    event.target.id
-
-                };
-
-                if (
-
-                    !onSelectionMoveReleaseInteractionRequested
-
-                ) {
-
-                    return;
-
-                }
-
-                onSelectionMoveReleaseInteractionRequested(
-                    selectionMoveReleaseInteraction
+                finishSelectionDrag(
+                    event,
+                    true
                 );
 
             }
 
+        );
+
+        [
+            "pointercancel",
+            "lostpointercapture"
+        ].forEach(
+            eventType => {
+
+                selectionLayer?.addEventListener(
+                    eventType,
+                    event => {
+
+                        if (
+                            !isActiveSelectionDrag(event)
+                        ) {
+                            return;
+                        }
+
+                        event.stopPropagation();
+
+                        finishSelectionDrag(event);
+
+                    }
+                );
+
+            }
         );
 
         selectionLayer?.addEventListener(
@@ -330,6 +534,18 @@ function initialize({
             "click",
 
             event => {
+
+                if (
+                    isSelectionHandleTarget(
+                        event.target
+                    )
+                ) {
+
+                    event.stopPropagation();
+
+                    return;
+
+                }
 
                 if (
                     !isSelectionRegionTarget(
@@ -371,8 +587,16 @@ function initialize({
                 const handle =
                     event.target.dataset.handle;
 
-                if (!handle) {
+                if (!isSelectionHandleTarget(event.target)) {
                     return;
+                }
+
+                if (hasActiveSelectionPointerDrag()) {
+
+                    event.stopPropagation();
+
+                    return;
+
                 }
 
                 event.stopPropagation();
@@ -380,6 +604,12 @@ function initialize({
                 event.target.setPointerCapture(
                     event.pointerId
                 );
+
+                activeHandleDragTarget =
+                    event.target;
+
+                activeHandleDragPointerId =
+                    event.pointerId;
 
                 const interactionTime =
                     resolveInteractionTime(
@@ -389,12 +619,22 @@ function initialize({
                 if (
                     interactionTime === null
                 ) {
+
+                    finishHandleDrag(
+                        event,
+                        true
+                    );
+
                     return;
+
                 }
 
                 const handleInteraction = {
 
                     handle,
+
+                    selectionId:
+                    getSelectionId(event.target),
 
                     interactionTime
 
@@ -423,7 +663,11 @@ function initialize({
                 const handle =
                     event.target.dataset.handle;
 
-                if (!handle) {
+                if (
+                    !activeHandleDragTarget ||
+                    !isActiveHandleDrag(event) ||
+                    !isSelectionHandleTarget(event.target)
+                ) {
                     return;
                 }
 
@@ -441,6 +685,9 @@ function initialize({
                 const handleMoveInteraction = {
 
                     handle,
+
+                    selectionId:
+                    getSelectionId(event.target),
 
                     interactionTime
 
@@ -469,53 +716,60 @@ function initialize({
                 const handle =
                     event.target.dataset.handle;
 
-                if (!handle) {
-                    return;
-                }
-
                 if (
-                    event.target.hasPointerCapture(
-                        event.pointerId
-                    )
-                ) {
-
-                    event.target.releasePointerCapture(
-                        event.pointerId
-                    );
-
-                }
-
-                const interactionTime =
-                    resolveInteractionTime(
-                        event.clientX
-                    );
-
-                const handleReleaseInteraction = {
-
-                    handle,
-
-                    interactionTime
-
-                };
-
-                if (
-                    !onHandleReleaseInteractionRequested
+                    !isActiveHandleDrag(event) ||
+                    !isSelectionHandleTarget(event.target)
                 ) {
                     return;
                 }
 
-                onHandleReleaseInteractionRequested(
-                    handleReleaseInteraction
+                finishHandleDrag(
+                    event,
+                    true
                 );
 
             }
 
         );
 
+        [
+            "pointercancel",
+            "lostpointercapture"
+        ].forEach(
+            eventType => {
+
+                selectionLayer?.addEventListener(
+                    eventType,
+                    event => {
+
+                        if (
+                            !isActiveHandleDrag(event)
+                        ) {
+                            return;
+                        }
+
+                        event.stopPropagation();
+
+                        finishHandleDrag(event);
+
+                    }
+                );
+
+            }
+        );
+
         timelineTrack.addEventListener(
             "pointerdown",
 
             event => {
+
+                if (hasActiveSelectionPointerDrag()) {
+
+                    event.stopPropagation();
+
+                    return;
+
+                }
 
                 isPointerInteractionActive = true;
 

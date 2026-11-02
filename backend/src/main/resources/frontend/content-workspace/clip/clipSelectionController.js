@@ -2,6 +2,34 @@ function createClipSelectionController(
     workspaceStateApi
 ) {
 
+    let currentSelectionIdentity =
+        createSelectionIdentity();
+
+    let currentSelectionIsMaterialized =
+        false;
+
+    const currentSelection =
+        workspaceStateApi
+            .getClipSelection();
+
+    Object.defineProperty(
+        currentSelection,
+        "selectionIdentity",
+        {
+
+            configurable: true,
+
+            enumerable: false,
+
+            get() {
+
+                return currentSelectionIdentity;
+
+            }
+
+        }
+    );
+
     /*
      * ============================================================
      * API Pública
@@ -18,6 +46,15 @@ function createClipSelectionController(
             )
         ) {
             return false;
+        }
+
+        if (
+            getSelection().startTime !==
+            startTime
+        ) {
+
+            beginNewSelectionAfterMaterialization();
+
         }
 
         workspaceStateApi
@@ -44,6 +81,15 @@ function createClipSelectionController(
             return false;
         }
 
+        if (
+            selection.endTime !==
+            endTime
+        ) {
+
+            beginNewSelectionAfterMaterialization();
+
+        }
+
         workspaceStateApi
             .setClipSelectionEnd(
                 endTime
@@ -66,6 +112,18 @@ function createClipSelectionController(
             return false;
         }
 
+        const selection =
+            getSelection();
+
+        if (
+            selection.startTime !== startTime ||
+            selection.endTime !== endTime
+        ) {
+
+            beginNewSelectionAfterMaterialization();
+
+        }
+
         workspaceStateApi
             .setClipSelection(
                 startTime,
@@ -77,8 +135,31 @@ function createClipSelectionController(
 
     function clearSelection() {
 
+        currentSelectionIdentity =
+            createSelectionIdentity();
+
+        currentSelectionIsMaterialized =
+            false;
+
         workspaceStateApi
             .clearClipSelection();
+
+        return true;
+    }
+
+    function markSelectionMaterialized(
+        selectionIdentity
+    ) {
+
+        if (
+            selectionIdentity !==
+            currentSelectionIdentity
+        ) {
+            return false;
+        }
+
+        currentSelectionIsMaterialized =
+            true;
 
         return true;
     }
@@ -114,6 +195,29 @@ function createClipSelectionController(
 
         );
 
+    }
+
+    function beginNewSelectionAfterMaterialization() {
+
+        if (
+            !currentSelectionIsMaterialized
+        ) {
+            return;
+        }
+
+        currentSelectionIdentity =
+            createSelectionIdentity();
+
+        currentSelectionIsMaterialized =
+            false;
+
+    }
+
+    function createSelectionIdentity() {
+
+        return Symbol(
+            "current-selection"
+        );
     }
 
     /*
@@ -233,7 +337,9 @@ function createClipSelectionController(
 
         hasSelection,
 
-        hasActiveSelection
+        hasActiveSelection,
+
+        markSelectionMaterialized
 
     };
 }

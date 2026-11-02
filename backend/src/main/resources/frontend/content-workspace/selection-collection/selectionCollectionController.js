@@ -1,4 +1,9 @@
-function createSelectionCollectionController() {
+function createSelectionCollectionController(
+    options = {}
+) {
+
+    const onChange =
+        options?.onChange ?? null;
 
     /*
      * ============================================================
@@ -7,6 +12,12 @@ function createSelectionCollectionController() {
      */
 
     const selections = [];
+
+    const materializedSelectionSourceCounts =
+        new Map();
+
+    const materializedSelectionSourceByItem =
+        new WeakMap();
 
     let activeSelectionId = null;
 
@@ -30,7 +41,7 @@ function createSelectionCollectionController() {
             return false;
         }
 
-        selections.push({
+        const materializedSelection = {
 
             id: createSelectionId(),
 
@@ -40,7 +51,39 @@ function createSelectionCollectionController() {
             endTime:
                 selection.endTime
 
-        });
+        };
+
+        selections.push(
+            materializedSelection
+        );
+
+        if (
+            selection.selectionIdentity !== undefined &&
+            selection.selectionIdentity !== null
+        ) {
+
+            const sourceIdentity =
+                selection.selectionIdentity;
+
+            const sourceCount =
+                materializedSelectionSourceCounts
+                    .get(sourceIdentity) || 0;
+
+            materializedSelectionSourceCounts
+                .set(
+                    sourceIdentity,
+                    sourceCount + 1
+                );
+
+            materializedSelectionSourceByItem
+                .set(
+                    materializedSelection,
+                    sourceIdentity
+                );
+
+        }
+
+        notifyChange();
 
         return true;
     }
@@ -61,9 +104,14 @@ function createSelectionCollectionController() {
             return false;
         }
 
-        selections.splice(
-            selectionIndex,
-            1
+        const [removedSelection] =
+            selections.splice(
+                selectionIndex,
+                1
+            );
+
+        decrementMaterializedSourceCount(
+            removedSelection
         );
 
         if (
@@ -71,6 +119,26 @@ function createSelectionCollectionController() {
         ) {
             activeSelectionId = null;
         }
+
+        notifyChange();
+
+        return true;
+    }
+
+    function removeAllSelections() {
+
+        if (selections.length === 0) {
+            return false;
+        }
+
+        selections.forEach(
+            decrementMaterializedSourceCount
+        );
+
+        selections.length = 0;
+        activeSelectionId = null;
+
+        notifyChange();
 
         return true;
     }
@@ -88,6 +156,38 @@ function createSelectionCollectionController() {
         ) || null;
     }
 
+    function updateSelection(
+        selectionId,
+        startTime,
+        endTime
+    ) {
+
+        const selection =
+            getSelection(
+                selectionId
+            );
+
+        if (
+            !selection ||
+            !isValidSelection({
+                startTime,
+                endTime
+            })
+        ) {
+            return false;
+        }
+
+        selection.startTime =
+            startTime;
+
+        selection.endTime =
+            endTime;
+
+        notifyChange();
+
+        return true;
+    }
+
     function hasSelection(
         selectionId
     ) {
@@ -96,6 +196,21 @@ function createSelectionCollectionController() {
             getSelection(
                 selectionId
             ) !== null
+        );
+    }
+
+    function containsSelectionSource(
+        selection
+    ) {
+
+        return (
+            selection !== null &&
+            typeof selection === "object" &&
+            selection.selectionIdentity !== undefined &&
+            selection.selectionIdentity !== null &&
+            materializedSelectionSourceCounts.has(
+                selection.selectionIdentity
+            )
         );
     }
 
@@ -148,6 +263,49 @@ function createSelectionCollectionController() {
         nextSelectionId += 1;
 
         return selectionId;
+    }
+
+    function notifyChange() {
+
+        if (typeof onChange === "function") {
+            onChange();
+        }
+
+    }
+
+    function decrementMaterializedSourceCount(
+        materializedSelection
+    ) {
+
+        const sourceIdentity =
+            materializedSelectionSourceByItem
+                .get(materializedSelection);
+
+        if (
+            sourceIdentity === undefined
+        ) {
+            return;
+        }
+
+        const sourceCount =
+            materializedSelectionSourceCounts
+                .get(sourceIdentity) || 0;
+
+        if (sourceCount <= 1) {
+
+            materializedSelectionSourceCounts
+                .delete(sourceIdentity);
+
+        } else {
+
+            materializedSelectionSourceCounts
+                .set(
+                    sourceIdentity,
+                    sourceCount - 1
+                );
+
+        }
+
     }
 
     function isValidSelection(
@@ -207,11 +365,17 @@ function createSelectionCollectionController() {
 
         removeSelection,
 
+        removeAllSelections,
+
         getSelections,
 
         getSelection,
 
+        updateSelection,
+
         hasSelection,
+
+        containsSelectionSource,
 
         hasSelections,
 

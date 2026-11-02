@@ -48,7 +48,8 @@ function createSelectionEditingController(
 ) {
     const {
 
-        clipSelectionController
+        clipSelectionController,
+        selectionWorkspace
 
     } = dependencies;
 
@@ -197,12 +198,46 @@ function createSelectionEditingController(
         interactionResolution
     ) {
 
+        if (
+            hasActiveEditingSession() &&
+            isEditingSessionStart(
+                interactionResolution
+            )
+        ) {
+            return false;
+        }
+
         state.interactionResolution =
             interactionResolution;
 
+        const selectionId =
+            interactionResolution.selectionId ??
+            null;
+
+        const hasMaterializedSelectionId =
+            selectionId !== null;
+
         const clipSelection =
-            clipSelectionController
-                .getSelection();
+            hasMaterializedSelectionId
+                ? selectionWorkspace
+                    ?.getMaterializedSelection(
+                        selectionId
+                    )
+                : clipSelectionController
+                    .getSelection();
+
+        if (
+            hasMaterializedSelectionId &&
+            !clipSelection
+        ) {
+
+            clearMissingSelectionSession(
+                interactionResolution
+            );
+
+            return false;
+
+        }
 
         const selectionState =
             resolveSelectionState(
@@ -224,10 +259,66 @@ function createSelectionEditingController(
             editingDecision;
 
         executeEditingDecision(
-            editingDecision
+            editingDecision,
+            clipSelection
         );
 
         return editingDecision;
+    }
+
+    function hasActiveEditingSession() {
+
+        return (
+            state.editingSession.moveSession !== null ||
+            state.editingSession.resizeSession !== null
+        );
+
+    }
+
+    function isEditingSessionStart(
+        interactionResolution
+    ) {
+
+        return (
+            interactionResolution.interactionType ===
+                "SELECTION_POINTER_DOWN" ||
+            interactionResolution.interactionType ===
+                "HANDLE_POINTER_DOWN"
+        );
+
+    }
+
+    function clearMissingSelectionSession(
+        interactionResolution
+    ) {
+
+        const selectionId =
+            interactionResolution.selectionId;
+
+        if (
+            interactionResolution.interactionType ===
+                "HANDLE_POINTER_UP" &&
+            state.editingSession.resizeSession
+                ?.selectionId === selectionId
+        ) {
+
+            state.editingSession.resizeSession =
+                null;
+
+        }
+
+        if (
+            interactionResolution.interactionType ===
+                "SELECTION_POINTER_UP" &&
+            state.editingSession.moveSession
+                ?.selectionId === selectionId
+        ) {
+
+            state.editingSession.moveSession =
+                null;
+
+        }
+
     }
 
     function handleHandleInteraction(
@@ -379,11 +470,17 @@ function createSelectionEditingController(
         const handle =
             handleInteraction.handle;
 
+        const selectionId =
+            handleInteraction.selectionId ??
+            null;
+
         const interactionResolution = {
 
             interactionType,
 
             handle,
+
+            selectionId,
 
             interactionTime:
             handleInteraction.interactionTime
@@ -404,11 +501,17 @@ function createSelectionEditingController(
         const handle =
             handleMoveInteraction.handle;
 
+        const selectionId =
+            handleMoveInteraction.selectionId ??
+            null;
+
         const interactionResolution = {
 
             interactionType,
 
             handle,
+
+            selectionId,
 
             interactionTime:
             handleMoveInteraction.interactionTime
@@ -429,11 +532,17 @@ function createSelectionEditingController(
         const handle =
             handleReleaseInteraction.handle;
 
+        const selectionId =
+            handleReleaseInteraction.selectionId ??
+            null;
+
         const interactionResolution = {
 
             interactionType,
 
             handle,
+
+            selectionId,
 
             interactionTime:
             handleReleaseInteraction.interactionTime
@@ -454,11 +563,17 @@ function createSelectionEditingController(
         const selectionRegionId =
             selectionMoveInteraction.selectionRegionId;
 
+        const selectionId =
+            selectionMoveInteraction.selectionId ??
+            null;
+
         const interactionResolution = {
 
             interactionType,
 
             selectionRegionId,
+
+            selectionId,
 
             interactionTime:
             selectionMoveInteraction.interactionTime
@@ -479,6 +594,10 @@ function createSelectionEditingController(
         const interactionResolution = {
 
             interactionType,
+
+            selectionId:
+            selectionMoveUpdateInteraction
+                .selectionId ?? null,
 
             selectionRegionId:
             selectionMoveUpdateInteraction
@@ -504,6 +623,10 @@ function createSelectionEditingController(
         const interactionResolution = {
 
             interactionType,
+
+            selectionId:
+            selectionMoveReleaseInteraction
+                .selectionId ?? null,
 
             selectionRegionId:
             selectionMoveReleaseInteraction
@@ -691,6 +814,9 @@ function createSelectionEditingController(
 
             operation,
 
+            selectionId:
+            interactionResolution.selectionId ?? null,
+
             interactionTime:
             interactionResolution
                 .interactionTime
@@ -777,6 +903,9 @@ function createSelectionEditingController(
             if (
 
                 state.editingSession
+                    .resizeSession?.selectionId ===
+                interactionResolution.selectionId &&
+                state.editingSession
                     .resizeSession?.handle ===
                 "start"
 
@@ -789,6 +918,9 @@ function createSelectionEditingController(
 
             else if (
 
+                state.editingSession
+                    .resizeSession?.selectionId ===
+                interactionResolution.selectionId &&
                 state.editingSession
                     .resizeSession?.handle ===
                 "end"
@@ -818,10 +950,16 @@ function createSelectionEditingController(
 
         ) {
 
+            const hasMatchingResizeSession =
+                state.editingSession.resizeSession
+                    ?.selectionId ===
+                interactionResolution.selectionId;
+
             return createEditingDecision({
 
-                operation:
-                    "END_SELECTION_RESIZE",
+                operation: hasMatchingResizeSession
+                    ? "END_SELECTION_RESIZE"
+                    : null,
 
                 interactionResolution
 
@@ -856,10 +994,16 @@ function createSelectionEditingController(
 
         ) {
 
+            const hasMatchingMoveSession =
+                state.editingSession.moveSession
+                    ?.selectionId ===
+                interactionResolution.selectionId;
+
             return createEditingDecision({
 
-                operation:
-                    "UPDATE_SELECTION_MOVE",
+                operation: hasMatchingMoveSession
+                    ? "UPDATE_SELECTION_MOVE"
+                    : null,
 
                 interactionResolution
 
@@ -875,10 +1019,16 @@ function createSelectionEditingController(
 
         ) {
 
+            const hasMatchingMoveSession =
+                state.editingSession.moveSession
+                    ?.selectionId ===
+                interactionResolution.selectionId;
+
             return createEditingDecision({
 
-                operation:
-                    "END_SELECTION_MOVE",
+                operation: hasMatchingMoveSession
+                    ? "END_SELECTION_MOVE"
+                    : null,
 
                 interactionResolution
 
@@ -972,8 +1122,55 @@ function createSelectionEditingController(
 
     }
 
+    function updateSelectionBounds({
+                                        selectionId,
+                                        startTime,
+                                        endTime,
+                                        handle = null
+                                    }) {
+
+        if (
+            selectionId !== null
+        ) {
+
+            return selectionWorkspace
+                ?.updateMaterializedSelection(
+                    selectionId,
+                    startTime,
+                    endTime
+                ) ?? false;
+
+        }
+
+        if (handle === "start") {
+
+            return clipSelectionController
+                .setClipStartTime(
+                    startTime
+                );
+
+        }
+
+        if (handle === "end") {
+
+            return clipSelectionController
+                .setClipEndTime(
+                    endTime
+                );
+
+        }
+
+        return clipSelectionController
+            .setSelection(
+                startTime,
+                endTime
+            );
+
+    }
+
     function executeEditingDecision(
-        editingDecision
+        editingDecision,
+        targetSelection
     ) {
 
         switch (
@@ -1042,6 +1239,8 @@ function createSelectionEditingController(
                 state.editingSession.resizeSession = {
 
                     handle: "start",
+                    selectionId:
+                    editingDecision.selectionId,
                     state: "ACTIVE",
                     interactionTime:
                     editingDecision.interactionTime
@@ -1055,6 +1254,8 @@ function createSelectionEditingController(
                 state.editingSession.resizeSession = {
 
                     handle: "end",
+                    selectionId:
+                    editingDecision.selectionId,
                     state: "ACTIVE",
                     interactionTime:
                     editingDecision.interactionTime
@@ -1065,20 +1266,19 @@ function createSelectionEditingController(
 
             case "BEGIN_SELECTION_MOVE":
 
-                const selection =
-                    clipSelectionController
-                        .getSelection();
-
                 state.editingSession.moveSession = {
+
+                    selectionId:
+                    editingDecision.selectionId,
 
                     interactionTime:
                     editingDecision.interactionTime,
 
                     startTime:
-                    selection.startTime,
+                    targetSelection.startTime,
 
                     endTime:
-                    selection.endTime
+                    targetSelection.endTime
 
                 };
 
@@ -1086,19 +1286,39 @@ function createSelectionEditingController(
 
             case "UPDATE_SELECTION_RESIZE_START":
 
-                clipSelectionController
-                    .setClipStartTime(
-                        editingDecision.interactionTime
-                    );
+                updateSelectionBounds({
+
+                    selectionId:
+                    editingDecision.selectionId,
+
+                    startTime:
+                    editingDecision.interactionTime,
+
+                    endTime:
+                    targetSelection.endTime,
+
+                    handle: "start"
+
+                });
 
                 break;
 
             case "UPDATE_SELECTION_RESIZE_END":
 
-                clipSelectionController
-                    .setClipEndTime(
-                        editingDecision.interactionTime
-                    );
+                updateSelectionBounds({
+
+                    selectionId:
+                    editingDecision.selectionId,
+
+                    startTime:
+                    targetSelection.startTime,
+
+                    endTime:
+                    editingDecision.interactionTime,
+
+                    handle: "end"
+
+                });
 
                 break;
 
@@ -1108,7 +1328,11 @@ function createSelectionEditingController(
                     state.editingSession
                         .moveSession;
 
-                if (!moveSession) {
+                if (
+                    !moveSession ||
+                    moveSession.selectionId !==
+                    editingDecision.selectionId
+                ) {
                     break;
                 }
 
@@ -1130,28 +1354,48 @@ function createSelectionEditingController(
                     moveSession.endTime +
                     interactionDelta;
 
-                clipSelectionController
-                    .setSelection(
+                updateSelectionBounds({
 
-                        newStartTime,
+                    selectionId:
+                    editingDecision.selectionId,
 
-                        newEndTime
+                    startTime:
+                    newStartTime,
 
-                    );
+                    endTime:
+                    newEndTime
+
+                });
 
                 break;
 
             case "END_SELECTION_RESIZE":
 
-                state.editingSession.resizeSession =
-                    null;
+                if (
+                    state.editingSession.resizeSession
+                        ?.selectionId ===
+                    editingDecision.selectionId
+                ) {
+
+                    state.editingSession.resizeSession =
+                        null;
+
+                }
 
                 break;
 
             case "END_SELECTION_MOVE":
 
-                state.editingSession.moveSession =
-                    null;
+                if (
+                    state.editingSession.moveSession
+                        ?.selectionId ===
+                    editingDecision.selectionId
+                ) {
+
+                    state.editingSession.moveSession =
+                        null;
+
+                }
 
                 break;
 

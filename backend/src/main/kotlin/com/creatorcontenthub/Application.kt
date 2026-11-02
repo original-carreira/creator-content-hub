@@ -25,6 +25,7 @@ import com.creatorcontenthub.infrastructure.http.requestId
 import com.creatorcontenthub.infrastructure.http.duration
 import com.creatorcontenthub.application.usecase.ProcessTextUseCase
 import com.creatorcontenthub.application.usecase.ExportTextUseCase
+import com.creatorcontenthub.application.usecase.ExportMaterializedSelectionUseCase
 import com.creatorcontenthub.application.usecase.GetMediaNavigationContextByAssetUseCase
 import com.creatorcontenthub.application.usecase.GetMediaNavigationContextUseCase
 import com.creatorcontenthub.application.usecase.IngestYoutubeUseCase
@@ -43,6 +44,7 @@ import com.creatorcontenthub.controller.jobRoutes
 import com.creatorcontenthub.controller.mediaNavigationRoutes
 import com.creatorcontenthub.controller.searchRoutes
 import com.creatorcontenthub.infrastructure.adapter.FFmpegAudioGenerationAdapter
+import com.creatorcontenthub.infrastructure.adapter.FFmpegVideoClipExportAdapter
 import com.creatorcontenthub.infrastructure.adapter.YtDlpVideoIngestionAdapter
 import com.creatorcontenthub.infrastructure.adapter.WhisperTranscriptionAdapter
 import com.creatorcontenthub.infrastructure.adapter.FallbackSummarizationAdapter
@@ -266,6 +268,18 @@ fun Application.module() {
         fileStorageService = fileStorageService
     )
 
+    val videoClipExportAdapter =
+        FFmpegVideoClipExportAdapter(
+            tempDirectory = File(outputDir, "temp")
+        )
+
+    val exportMaterializedSelectionUseCase =
+        ExportMaterializedSelectionUseCase(
+            jobRepository = jobRepository,
+            assetRepository = assetRepository,
+            videoClipExportPort = videoClipExportAdapter
+        )
+
     val cleanupService = FileCleanupService(outputDir)
     cleanupService.start()
 
@@ -418,7 +432,8 @@ fun Application.module() {
         getMediaNavigationContextUseCase,
         getMediaNavigationContextByAssetUseCase,
         createMediaNavigationContextUseCase,
-        updateMediaNavigationContextUseCase
+        updateMediaNavigationContextUseCase,
+        exportMaterializedSelectionUseCase
     )
 }
 
@@ -489,7 +504,8 @@ fun Application.configureRouting(
     getMediaNavigationContextUseCase: GetMediaNavigationContextUseCase,
     getMediaNavigationContextByAssetUseCase: GetMediaNavigationContextByAssetUseCase,
     createMediaNavigationContextUseCase: CreateMediaNavigationContextUseCase,
-    updateMediaNavigationContextUseCase: UpdateMediaNavigationContextUseCase
+    updateMediaNavigationContextUseCase: UpdateMediaNavigationContextUseCase,
+    exportMaterializedSelectionUseCase: ExportMaterializedSelectionUseCase
 
 ) {
     routing {
@@ -500,7 +516,9 @@ fun Application.configureRouting(
         searchRoutes(searchJobsUseCase)
         jobRoutes(
             repository = jobRepository,
-            assetRepository = assetRepository
+            assetRepository = assetRepository,
+            exportMaterializedSelectionUseCase =
+                exportMaterializedSelectionUseCase
         )
         mediaNavigationRoutes(
             getMediaNavigationContextUseCase,

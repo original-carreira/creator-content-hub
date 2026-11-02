@@ -304,6 +304,27 @@
                 "clipSelectionDisplay"
             );
 
+        const materializedSelectionsList =
+            document.getElementById(
+                "materializedSelectionsList"
+            );
+
+        const clearAllMaterializedSelectionsButton =
+            document.getElementById(
+                "clearAllMaterializedSelectionsButton"
+            );
+
+        const materializedSelectionExportFeedback =
+            document.getElementById(
+                "materializedSelectionExportFeedback"
+            );
+
+        const videoAsset =
+            assets?.find(
+                asset =>
+                    asset.assetType === "VIDEO"
+            );
+
         /*
          * ============================================================
          * FASE 3
@@ -328,7 +349,12 @@
 
         const selectionCollectionController =
             window.SelectionCollectionController
-                .createSelectionCollectionController();
+                .createSelectionCollectionController({
+
+                    onChange:
+                        updateMaterializedSelectionsDisplay
+
+                });
 
         const selectionWorkspace =
             window.SelectionWorkspace
@@ -344,7 +370,9 @@
             window.SelectionEditingController
                 .createSelectionEditingController({
 
-                    clipSelectionController
+                    clipSelectionController,
+
+                    selectionWorkspace
 
                 });
 
@@ -442,18 +470,7 @@
                      * O Composition Root permanece responsável por sincronizar
                      * a representação visual com o estado atualizado do domínio.
                      */
-                    const selection =
-                        selectionWorkspace
-                            .getSelection();
-
-                    timelineController
-                        ?.updateSelections({
-
-                            selections: [
-                                selection
-                            ]
-
-                        });
+                    updateTimelineSelections();
 
                     updateClipSelectionDisplay();
 
@@ -485,18 +502,7 @@
                             handleMoveInteraction
                         );
 
-                    const selection =
-                        selectionWorkspace
-                            .getSelection();
-
-                    timelineController
-                        ?.updateSelections({
-
-                            selections: [
-                                selection
-                            ]
-
-                        });
+                    updateTimelineSelections();
 
                     updateClipSelectionDisplay();
 
@@ -542,18 +548,7 @@
                             selectionMoveUpdateInteraction
                         );
 
-                    const selection =
-                        selectionWorkspace
-                            .getSelection();
-
-                    timelineController
-                        ?.updateSelections({
-
-                            selections: [
-                                selection
-                            ]
-
-                        });
+                    updateTimelineSelections();
 
                     updateClipSelectionDisplay();
 
@@ -587,6 +582,54 @@
          * o estado atual do domínio.
          * ============================================================
          */
+
+        function updateTimelineSelections() {
+
+            const materializedSelections =
+                selectionWorkspace
+                    .getSelectionCollection()
+                    .getSelections();
+
+            const currentSelection =
+                selectionWorkspace
+                    .getSelection();
+
+            const selections = [
+                ...materializedSelections
+            ];
+
+            if (
+                currentSelection.startTime !== null &&
+                currentSelection.endTime !== null
+            ) {
+
+                const alreadyMaterialized =
+                    selectionWorkspace
+                        .getSelectionCollection()
+                        .containsSelectionSource(
+                            currentSelection
+                        );
+
+                if (
+                    !alreadyMaterialized
+                ) {
+
+                    selections.push(
+                        currentSelection
+                    );
+
+                }
+
+            }
+
+            timelineController
+                ?.updateSelections({
+
+                    selections
+
+                });
+        }
+
 
         function handleSelectionValidation(
             validationResult,
@@ -720,6 +763,319 @@
 
             clipSelectionDisplay.innerText =
                 `${indicator} ${selectionLabel} | Início: ${startTime} | Fim: ${endTime} | Duração: ${duration}`;
+        }
+
+        function updateMaterializedSelectionsDisplay() {
+
+            if (
+                !materializedSelectionsList ||
+                !selectionWorkspace
+            ) {
+                return;
+            }
+
+            const selections =
+                selectionWorkspace
+                    .getSelectionCollection()
+                    .getSelections();
+
+            if (
+                clearAllMaterializedSelectionsButton
+            ) {
+                clearAllMaterializedSelectionsButton
+                    .disabled =
+                    selections.length === 0;
+            }
+
+            materializedSelectionsList
+                .replaceChildren();
+
+            if (selections.length === 0) {
+
+                const emptyRow =
+                    document.createElement("div");
+
+                emptyRow.setAttribute("role", "row");
+                emptyRow.style.padding = "8px 0";
+                emptyRow.style.color = "#666";
+                emptyRow.style.fontSize = "13px";
+
+                const emptyCell =
+                    document.createElement("span");
+
+                emptyCell.setAttribute("role", "cell");
+                emptyCell.style.gridColumn = "1 / -1";
+                emptyCell.textContent =
+                    "Nenhuma Selection materializada.";
+
+                emptyRow.appendChild(emptyCell);
+                materializedSelectionsList
+                    .appendChild(emptyRow);
+
+                return;
+
+            }
+
+            selections.forEach(selection => {
+
+                const row =
+                    document.createElement("div");
+
+                row.setAttribute("role", "row");
+                row.dataset.selectionId =
+                    String(selection.id);
+                row.style.display = "grid";
+                row.style.gridTemplateColumns =
+                    "1.4fr 1fr 1fr 1fr auto";
+                row.style.gap = "8px";
+                row.style.padding = "8px 0";
+                row.style.borderBottom =
+                    "1px solid #eee";
+                row.style.fontSize = "13px";
+
+                const duration =
+                    selection.endTime -
+                    selection.startTime;
+
+                [
+                    selection.id,
+                    formatVideoTime(selection.startTime),
+                    formatVideoTime(selection.endTime),
+                    formatVideoTime(duration)
+                ].forEach(value => {
+
+                    const cell =
+                        document.createElement("span");
+
+                    cell.setAttribute("role", "cell");
+                    cell.textContent = String(value);
+                    row.appendChild(cell);
+
+                });
+
+                const actionCell =
+                    document.createElement("span");
+
+                actionCell.setAttribute("role", "cell");
+
+                const exportButton =
+                    document.createElement("button");
+
+                exportButton.type = "button";
+                exportButton.textContent = "Exportar";
+                exportButton.dataset.selectionId =
+                    String(selection.id);
+                exportButton.disabled =
+                    !videoAsset;
+                exportButton.addEventListener(
+                    "click",
+                    () => exportMaterializedSelection(
+                        selection.id,
+                        exportButton
+                    )
+                );
+
+                actionCell.appendChild(exportButton);
+
+                const removeButton =
+                    document.createElement("button");
+
+                removeButton.type = "button";
+                removeButton.textContent = "Remover";
+                removeButton.dataset.selectionId =
+                    String(selection.id);
+                removeButton.style.marginLeft = "6px";
+                removeButton.addEventListener(
+                    "click",
+                    () => removeMaterializedSelection(
+                        selection.id
+                    )
+                );
+
+                actionCell.appendChild(removeButton);
+                row.appendChild(actionCell);
+
+                materializedSelectionsList
+                    .appendChild(row);
+
+            });
+
+        }
+
+        function removeMaterializedSelection(
+            selectionId
+        ) {
+
+            const removed =
+                selectionWorkspace
+                    .removeMaterializedSelection(
+                        selectionId
+                    );
+
+            if (removed) {
+                updateTimelineSelections();
+            }
+
+            return removed;
+
+        }
+
+        function removeAllMaterializedSelections() {
+
+            if (
+                !window.confirm(
+                    "Remover todas as Selections materializadas?"
+                )
+            ) {
+                return false;
+            }
+
+            const removed =
+                selectionWorkspace
+                    .removeAllMaterializedSelections();
+
+            if (removed) {
+                updateTimelineSelections();
+            }
+
+            return removed;
+
+        }
+
+        async function exportMaterializedSelection(
+            selectionId,
+            button
+        ) {
+
+            const selection =
+                selectionWorkspace
+                    .getMaterializedSelection(
+                        selectionId
+                    );
+
+            const jobId = getJobId();
+
+            if (
+                !selection ||
+                !videoAsset ||
+                !jobId
+            ) {
+                if (materializedSelectionExportFeedback) {
+                    materializedSelectionExportFeedback.innerText =
+                        "Não foi possível resolver a seleção ou o vídeo para exportação.";
+                    materializedSelectionExportFeedback.style.color =
+                        "#b00020";
+                }
+                return;
+            }
+
+            const originalButtonText =
+                button.textContent;
+
+            button.disabled = true;
+            button.textContent = "Exportando…";
+
+            if (materializedSelectionExportFeedback) {
+                materializedSelectionExportFeedback.innerText =
+                    `Exportando ${selectionId}…`;
+                materializedSelectionExportFeedback.style.color =
+                    "#444";
+            }
+
+            try {
+                const response = await fetch(
+                    `/jobs/${encodeURIComponent(jobId)}` +
+                    `/assets/${encodeURIComponent(videoAsset.assetId)}` +
+                    "/selections/export",
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            selectionId: String(selectionId),
+                            startTime: selection.startTime,
+                            endTime: selection.endTime
+                        })
+                    }
+                );
+
+                if (!response.ok) {
+                    let message =
+                        `Falha na exportação (${response.status}).`;
+
+                    try {
+                        const payload =
+                            await response.json();
+
+                        message =
+                            payload.error?.message ||
+                            message;
+                    } catch (_error) {
+                        // Retain the status-based message for non-JSON errors.
+                    }
+
+                    throw new Error(message);
+                }
+
+                const blob = await response.blob();
+                const objectUrl =
+                    URL.createObjectURL(blob);
+
+                const contentDisposition =
+                    response.headers.get(
+                        "Content-Disposition"
+                    ) || "";
+
+                const filenameMatch =
+                    contentDisposition.match(
+                        /filename\s*=\s*(?:"([^"]+)"|([^;]+))/i
+                    );
+
+                const downloadLink =
+                    document.createElement("a");
+
+                downloadLink.href = objectUrl;
+                downloadLink.download =
+                    (filenameMatch?.[1] || filenameMatch?.[2])
+                        ?.trim() ||
+                    `${selectionId}.mp4`;
+                downloadLink.style.display = "none";
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                downloadLink.remove();
+
+                window.setTimeout(
+                    () => URL.revokeObjectURL(objectUrl),
+                    1000
+                );
+
+                if (materializedSelectionExportFeedback) {
+                    materializedSelectionExportFeedback.innerText =
+                        `Exportação de ${selectionId} concluída.`;
+                    materializedSelectionExportFeedback.style.color =
+                        "#246b35";
+                }
+
+            } catch (error) {
+                console.warn(
+                    "[SELECTION EXPORT FAILED]",
+                    error
+                );
+
+                if (materializedSelectionExportFeedback) {
+                    materializedSelectionExportFeedback.innerText =
+                        error.message ||
+                        "Não foi possível exportar a seleção.";
+                    materializedSelectionExportFeedback.style.color =
+                        "#b00020";
+                }
+
+            } finally {
+                button.disabled = !videoAsset;
+                button.textContent = originalButtonText;
+            }
+
         }
 
 
@@ -942,6 +1298,8 @@
                             videoElement.currentTime
                         );
 
+                    updateTimelineSelections();
+
                     updateClipSelectionDisplay();
 
                 }
@@ -964,6 +1322,8 @@
                             videoElement.currentTime
                         );
 
+                    updateTimelineSelections();
+
                     updateClipSelectionDisplay();
 
                 }
@@ -984,6 +1344,8 @@
 
                         clipOperationsApi
                             .clearSelection();
+
+                        updateTimelineSelections();
 
                         updateClipSelectionDisplay();
 
@@ -1012,12 +1374,26 @@
                             materialized
                         ) {
 
+                            updateTimelineSelections();
+
                             updateClipSelectionDisplay();
 
                         }
 
                     }
 
+                );
+
+        }
+
+        if (
+            clearAllMaterializedSelectionsButton
+        ) {
+
+            clearAllMaterializedSelectionsButton
+                .addEventListener(
+                    "click",
+                    removeAllMaterializedSelections
                 );
 
         }
